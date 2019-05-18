@@ -3,6 +3,7 @@ import time
 import argparse
 
 import torch
+import torch.nn as nn
 
 from nets import resnet
 from train import cfg
@@ -14,13 +15,17 @@ def predict(args):
     net.load_state_dict(torch.load(args.trained_model, map_location='cpu'))
     net.eval()
 
+    softmax = nn.Softmax()
+
     img = cv2.imread(args.image_file)
     img = cv2.resize(img, IMAGE_SHAPE)
     t0 = time.time()
     tensor_img = torch.from_numpy(img)
     result = net(tensor_img.unsqueeze(0).permute(0, 3, 1, 2).float())
+    result = softmax(result)
+    values, indices = torch.max(result, 1)
     t1 = time.time()
-    print(result, 'time:', t1 - t0)
+    print(values, indices, 'time:', t1 - t0)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
