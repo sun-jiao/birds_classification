@@ -7,7 +7,7 @@ import torch.utils.data as data
 import torch.nn.functional as F
 
 from torch.autograd import Variable
-from dataset.birds_dataset import BirdsDataset
+from dataset.birds_dataset import BirdsDataset, ListLoader
 from nets import resnet
 
 cfg = {
@@ -15,6 +15,7 @@ cfg = {
     'num_classes': 11000,
     'num_workers': 4,
     'verbose_period': 100,
+    'eval_period': 5000,
     'save_period': 20000,
     'save_folder': 'ckpt/',
     'ckpt_name': 'bird_cls',
@@ -23,14 +24,21 @@ cfg = {
 def save_ckpt(net, iteration):
     torch.save(net.state_dict(), cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(iteration) + '.pth')
 
-def train(args):
-    t0 = time.time()
-    dataset = BirdsDataset(args.dataset_root, cfg['num_classes'])
-    t1 = time.time()
-    print('Load dataset with {} secs'.format(t1 - t0))
-    data_loader = data.DataLoader(dataset, args.batch_size, num_workers=cfg['num_workers'],
-                                  shuffle=True, pin_memory=True)
+def evaluate(net, eval_loader):
+    total_loss = 0.0
+    batch_iterator = iter(eval_loader)
+    for iteration in range(len(eval_loader)):
+        images, type_ids = next(batch_iterator)
+        images = Variable(images.cuda())
+        type_ids = Variable(type_ids.cuda())
 
+        # forward
+        out = net(images.permute(0, 3, 1, 2).float())
+        loss = F.cross_entropy(out, type_ids)
+        total_loss += loss.item()
+    return total_loss
+
+def train(args, train_loader, eval_loader):
     net = resnet.resnext50_32x4d(num_classes=cfg['num_classes']).cuda()
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
@@ -38,13 +46,13 @@ def train(args):
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
 
-    batch_iterator = iter(data_loader)
+    batch_iterator = iter(train_loader)
     for iteration in range(args.max_epoch * cfg['nr_images'] // args.batch_size):
         t0 = time.time()
         try:
             images, type_ids = next(batch_iterator)
         except StopIteration:
-            batch_iterator = iter(data_loader)
+            batch_iterator = iter(train_loader)
             images, type_ids = next(batch_iterator)
         except Exception as e:
             print('Loading data exception:', e)
@@ -71,7 +79,11 @@ def train(args):
             print('step: %d loss: %.4f | accuracy: %.4f | time: %.4f sec.' %
                   (iteration, loss.item(), accuracy, (t1 - t0)))
 
-        if iteration % cfg['save_period'] == 0:
+        if iteration % cfg['eval_period'] == 0 and iteration != 0:
+            loss = evaluate(net, eval_loader)
+            print('Evaluation loss:', loss)
+
+        if iteration % cfg['save_period'] == 0 and iteration != 0:
             # save checkpoint
             print('Saving state, iter:', iteration)
             save_ckpt(net, iteration)
@@ -89,4 +101,19 @@ if __name__ == '__main__':
     parser.add_argument('--resume', default=None, type=str, help='Checkpoint file to resume training from')
     args = parser.parse_args()
 
-    train(args)
+    t0 = time.time()
+    list_loader = ListLoader(args.dataset_root, cfg['num_classes'])
+    list_loader.export_labelmap()
+    image_list, train_indices, eval_indices = list_loader.image_indices()
+
+    train_set = BirdsDataset(image_list, train_indices)
+    eval_set = BirdsDataset(image_list, eval_indices)
+
+    train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
+                                   shuffle=True, pin_memory=True)
+    eval_loader = data.DataLoader(eval_set, args.batch_size, num_workers=cfg['num_workers'],
+                                   shuffle=False, pin_memory=True)
+    t1 = time.time()
+    print('Load dataset with {} secs'.format(t1 - t0))
+
+    train(args, train_loader, eval_loader)
