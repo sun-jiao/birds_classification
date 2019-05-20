@@ -21,8 +21,10 @@ cfg = {
     'ckpt_name': 'bird_cls',
     }
 
+
 def save_ckpt(net, iteration):
     torch.save(net.state_dict(), cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(iteration) + '.pth')
+
 
 def evaluate(net, eval_loader):
     total_loss = 0.0
@@ -37,6 +39,7 @@ def evaluate(net, eval_loader):
         loss = F.cross_entropy(out, type_ids)
         total_loss += loss.item()
     return total_loss
+
 
 def train(args, train_loader, eval_loader):
     net = resnet.resnext50_32x4d(num_classes=cfg['num_classes']).cuda()
@@ -62,7 +65,6 @@ def train(args, train_loader, eval_loader):
 
         # forward
         out = net(images.permute(0, 3, 1, 2).float())
-        #print('out:', out, out.shape)
 
         # backprop
         optimizer.zero_grad()
@@ -91,6 +93,7 @@ def train(args, train_loader, eval_loader):
     # final checkpoint
     save_ckpt(net, iteration)
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
@@ -112,7 +115,7 @@ if __name__ == '__main__':
     train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
                                    shuffle=True, pin_memory=True)
     eval_loader = data.DataLoader(eval_set, args.batch_size, num_workers=cfg['num_workers'],
-                                   shuffle=False, pin_memory=True)
+                                  shuffle=False, pin_memory=True)
     t1 = time.time()
     print('Load dataset with {} secs'.format(t1 - t0))
 

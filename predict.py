@@ -10,6 +10,7 @@ from train import cfg
 
 IMAGE_SHAPE = (200, 200)
 
+
 def predict(args):
     net = resnet.resnext50_32x4d(num_classes=cfg['num_classes'])
     net.load_state_dict(torch.load(args.trained_model, map_location='cpu'))
@@ -26,6 +27,7 @@ def predict(args):
     values, indices = torch.max(result, 1)
     t1 = time.time()
     print(values, indices, 'time:', t1 - t0)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

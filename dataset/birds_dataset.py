@@ -3,11 +3,11 @@ import cv2
 
 import numpy as np
 
-import torch
 import torch.utils.data as data
 
 SEED = 20190519
 EVAL_RATIO = 0.05
+
 
 class ListLoader(object):
     def __init__(self, root_path, num_classes):
@@ -16,7 +16,7 @@ class ListLoader(object):
         self.image_list = []
         self.labelmap = {}
         for directory in os.walk(root_path):
-            for dir_name in directory[1]: # All subdirectories
+            for dir_name in directory[1]:  # All subdirectories
                 pos = dir_name.find('.')
                 type_id = int(dir_name[0:pos])
                 type_name = dir_name[pos+1:]
@@ -57,6 +57,7 @@ class BirdsDataset(data.Dataset):
 
     def __len__(self):
         return len(self.image_indices)
+
 
 if __name__ == '__main__':
     list_loader = ListLoader('/media/data2/i18n/V1', 11000)
