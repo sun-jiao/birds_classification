@@ -7,6 +7,7 @@ import torch.utils.data as data
 import torch.nn.functional as F
 
 from torch.autograd import Variable
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset.birds_dataset import BirdsDataset, ListLoader
 from nets import resnet
 
@@ -14,9 +15,9 @@ cfg = {
     'nr_images': 3934740,
     'num_classes': 11000,
     'num_workers': 4,
-    'verbose_period': 100,
-    'eval_period': 5000,
-    'save_period': 20000,
+    'verbose_period': 2000,
+    'eval_period': 20000,
+    'save_period': 40000,
     'save_folder': 'ckpt/',
     'ckpt_name': 'bird_cls',
     }
@@ -45,12 +46,14 @@ def train(args, train_loader, eval_loader):
     net = resnet.resnext50_32x4d(num_classes=cfg['num_classes']).cuda()
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
-        net.load_weights(args.resume)
+        ckpt_file = cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(args.resume) + '.pth'
+        net.load_state_dict(torch.load(ckpt_file))
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5)
 
     batch_iterator = iter(train_loader)
-    for iteration in range(args.max_epoch * cfg['nr_images'] // args.batch_size):
+    for iteration in range(args.resume + 1, args.max_epoch * cfg['nr_images'] // args.batch_size):
         t0 = time.time()
         try:
             images, type_ids = next(batch_iterator)
@@ -83,6 +86,7 @@ def train(args, train_loader, eval_loader):
 
         if iteration % cfg['eval_period'] == 0 and iteration != 0:
             loss = evaluate(net, eval_loader)
+            scheduler.step(loss)
             print('Evaluation loss:', loss)
 
         if iteration % cfg['save_period'] == 0 and iteration != 0:
@@ -101,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_root', default='/media/data2/i18n/V1', type=str, help='Root path of data')
     parser.add_argument('--lr', default=0.1, type=float, help='Initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float, help='Momentum value for optimizer')
-    parser.add_argument('--resume', default=None, type=str, help='Checkpoint file to resume training from')
+    parser.add_argument('--resume', default=0, type=int, help='Checkpoint steps to resume training from')
     args = parser.parse_args()
 
     t0 = time.time()
