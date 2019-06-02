@@ -30,6 +30,7 @@ def save_ckpt(net, iteration):
 def evaluate(net, eval_loader):
     total_loss = 0.0
     batch_iterator = iter(eval_loader)
+    sum_accuracy = 0
     for iteration in range(len(eval_loader)):
         images, type_ids = next(batch_iterator)
         images = Variable(images.cuda())
@@ -37,9 +38,14 @@ def evaluate(net, eval_loader):
 
         # forward
         out = net(images.permute(0, 3, 1, 2).float())
+        # accuracy
+        _, predict = torch.max(out, 1)
+        correct = (predict == type_ids)
+        sum_accuracy += correct.sum().item() / correct.size()[0]
+        # loss
         loss = F.cross_entropy(out, type_ids)
         total_loss += loss.item()
-    return total_loss
+    return total_loss / iteration, sum_accuracy / iteration
 
 
 def train(args, train_loader, eval_loader):
@@ -85,9 +91,9 @@ def train(args, train_loader, eval_loader):
                   (iteration, loss.item(), accuracy, (t1 - t0)))
 
         if iteration % cfg['eval_period'] == 0 and iteration != 0:
-            loss = evaluate(net, eval_loader)
-            scheduler.step(loss)
-            print('Evaluation loss:', loss)
+            loss, accuracy = evaluate(net, eval_loader)
+            scheduler.step(accuracy)
+            print('Evaluation accuracy:', accuracy)
 
         if iteration % cfg['save_period'] == 0 and iteration != 0:
             # save checkpoint
