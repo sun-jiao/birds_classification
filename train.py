@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
     train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
                                    shuffle=True, pin_memory=True)
-    eval_loader = data.DataLoader(eval_set, args.batch_size, num_workers=cfg['num_workers'],
+    eval_loader = data.DataLoader(eval_set, args.batch_size // 2, num_workers=cfg['num_workers'],
                                   shuffle=False, pin_memory=True)
     t1 = time.time()
     print('Load dataset with {} secs'.format(t1 - t0))
