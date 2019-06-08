@@ -56,7 +56,7 @@ def train(args, train_loader, eval_loader):
         net.load_state_dict(torch.load(ckpt_file))
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5)
+    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
 
     batch_iterator = iter(train_loader)
     for iteration in range(args.resume + 1, args.max_epoch * cfg['nr_images'] // args.batch_size):
@@ -119,8 +119,8 @@ if __name__ == '__main__':
     list_loader.export_labelmap()
     image_list, train_indices, eval_indices = list_loader.image_indices()
 
-    train_set = BirdsDataset(image_list, train_indices)
-    eval_set = BirdsDataset(image_list, eval_indices)
+    train_set = BirdsDataset(image_list, train_indices, list_loader.multiples(), True)
+    eval_set = BirdsDataset(image_list, eval_indices, list_loader.multiples(), False)
 
     train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
                                    shuffle=True, pin_memory=True)
