@@ -10,6 +10,7 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from dataset.birds_dataset import BirdsDataset, ListLoader
 from nets import resnet34
+from utils import augmentations
 
 cfg = {
     'nr_images': 3934740,
@@ -59,6 +60,7 @@ def train(args, train_loader, eval_loader):
     # scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
     scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
 
+    aug = augmentations.Augmentations().cuda()
     batch_iterator = iter(train_loader)
     for iteration in range(args.resume + 1, args.max_epoch * cfg['nr_images'] // args.batch_size):
         t0 = time.time()
@@ -70,11 +72,13 @@ def train(args, train_loader, eval_loader):
         except Exception as e:
             print('Loading data exception:', e)
 
-        images = Variable(images.cuda())
+        images = Variable(images.cuda()).permute(0, 3, 1, 2).float()
         type_ids = Variable(type_ids.cuda())
 
+        # augmentation
+        images = aug(images)
         # forward
-        out = net(images.permute(0, 3, 1, 2).float())
+        out = net(images)
 
         # backprop
         optimizer.zero_grad()
