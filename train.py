@@ -7,9 +7,9 @@ import torch.utils.data as data
 import torch.nn.functional as F
 
 from torch.autograd import Variable
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from dataset.birds_dataset import BirdsDataset, ListLoader
-from nets import resnet
+from nets import resnet34
 
 cfg = {
     'nr_images': 3934740,
@@ -49,14 +49,15 @@ def evaluate(net, eval_loader):
 
 
 def train(args, train_loader, eval_loader):
-    net = resnet.resnext50_32x4d(num_classes=cfg['num_classes']).cuda()
+    net = resnet34.ResNet(cfg['num_classes']).cuda()
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
         ckpt_file = cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(args.resume) + '.pth'
         net.load_state_dict(torch.load(ckpt_file))
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
-    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
+    # scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
+    scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
 
     batch_iterator = iter(train_loader)
     for iteration in range(args.resume + 1, args.max_epoch * cfg['nr_images'] // args.batch_size):
