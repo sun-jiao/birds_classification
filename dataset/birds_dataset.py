@@ -14,7 +14,7 @@ EVAL_RATIO = 0.05
 ia.seed(int(time.time()))
 
 seq = iaa.Sequential([
-         iaa.Affine(rotate=(-45, 45)),
+         iaa.Affine(rotate=(-90, 90)),
          iaa.CropAndPad(percent=(-0.10, 0.10)),
          iaa.Fliplr(0.5),
 ])
