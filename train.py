@@ -9,8 +9,11 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from dataset.birds_dataset import BirdsDataset, ListLoader
-from nets import resnet34
+from nets import resnet
 from utils import augmentations
+from warmup_scheduler import GradualWarmupScheduler
+
+import apex.amp as amp
 
 cfg = {
     'nr_images': 3934740,
@@ -50,15 +53,19 @@ def evaluate(net, eval_loader):
 
 
 def train(args, train_loader, eval_loader):
-    net = resnet34.ResNet(cfg['num_classes']).cuda()
+    net = resnet.resnext50_32x4d(num_classes=cfg['num_classes']).cuda()
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
         ckpt_file = cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(args.resume) + '.pth'
         net.load_state_dict(torch.load(ckpt_file))
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
+                          weight_decay=1e-6, nesterov=True)
     # scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
+    net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
     scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
+    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
+                                              after_scheduler=scheduler)
 
     aug = augmentations.Augmentations().cuda()
     batch_iterator = iter(train_loader)
@@ -83,7 +90,10 @@ def train(args, train_loader, eval_loader):
         # backprop
         optimizer.zero_grad()
         loss = F.cross_entropy(out, type_ids)
-        loss.backward()
+
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
+
         optimizer.step()
         t1 = time.time()
 
@@ -93,16 +103,16 @@ def train(args, train_loader, eval_loader):
             correct = (predict == type_ids)
             accuracy = correct.sum().item() / correct.size()[0]
             print('step: %d loss: %.4f | accuracy: %.4f | time: %.4f sec.' %
-                  (iteration, loss.item(), accuracy, (t1 - t0)))
+                  (iteration, loss.item(), accuracy, (t1 - t0)), flush=True)
 
         if iteration % cfg['eval_period'] == 0 and iteration != 0:
             loss, accuracy = evaluate(net, eval_loader)
-            scheduler.step(accuracy)
-            print('Evaluation accuracy:', accuracy)
+            scheduler_warmup.step(accuracy)
+            print('Evaluation accuracy:', accuracy, flush=True)
 
         if iteration % cfg['save_period'] == 0 and iteration != 0:
             # save checkpoint
-            print('Saving state, iter:', iteration)
+            print('Saving state, iter:', iteration, flush=True)
             save_ckpt(net, iteration)
 
     # final checkpoint
@@ -110,6 +120,8 @@ def train(args, train_loader, eval_loader):
 
 
 if __name__ == '__main__':
+    torch.backends.cudnn.benchmark = True
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
     parser.add_argument('--max_epoch', default=100, type=int, help='Maximum epoches for training')
