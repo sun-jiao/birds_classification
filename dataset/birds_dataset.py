@@ -14,16 +14,13 @@ EVAL_RATIO = 0.05
 ia.seed(int(time.time()))
 
 seq = iaa.Sequential([
-         iaa.Affine(rotate=(-90, 90)),
-         iaa.CropAndPad(percent=(-0.10, 0.10)),
-         iaa.Fliplr(0.5),
+    iaa.OneOf([
+        iaa.ElasticTransformation(sigma=0.25, alpha=(0.01, 0.6)),
+        iaa.PerspectiveTransform(scale=(0.01, 0.10)),
+        iaa.PiecewiseAffine(scale=(0.01, 0.03)),
+    ]),
 ])
 '''iaa.OneOf([
-    iaa.ElasticTransformation(sigma=0.25, alpha=(0.01, 0.6)),
-    iaa.PerspectiveTransform(scale=(0.01, 0.10)),
-    iaa.PiecewiseAffine(scale=(0.01, 0.03)),
- ]),
-   iaa.OneOf([
     iaa.GammaContrast(gamma=(0.8, 1.2)),
     iaa.SigmoidContrast(cutoff=(0.4, 0.6), gain=(5, 10)),
     iaa.Multiply((0.8, 1.2)),
@@ -106,13 +103,13 @@ class BirdsDataset(data.Dataset):
         image = cv2.imread(image_path)
         if isinstance(type_id, str):
             print('What:', type_id)
-        if self.is_training:
+        '''if self.is_training:
             multiple = self.category_multiple[type_id]
             # Only augment small categories
-            if multiple > 1:
+            if multiple > 1 and not np.random.randint(10):
                 image = seq.augment_image(image)
                 # imgaug may fracture numpy array
-                image = np.ascontiguousarray(image)
+                image = np.ascontiguousarray(image)'''
         return image, int(type_id)
 
     def __len__(self):
