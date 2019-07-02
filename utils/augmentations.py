@@ -9,7 +9,7 @@ class Augmentations(nn.Module):
     def __init__(self):
         super(Augmentations, self).__init__()
         self.gaussian_blur = nn.Conv2d(3, 3, (3, 3), padding=1, groups=3, bias=False)
-        self.dropout = nn.Dropout2d(p=0.1)
+        self.dropout = nn.Dropout2d(p=0.2)
 
     def forward(self, image):
         self.gaussian_blur.weight.data.normal_(0.111, 0.01)

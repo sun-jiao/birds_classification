@@ -7,11 +7,11 @@ import torch.utils.data as data
 import torch.nn.functional as F
 
 from torch.autograd import Variable
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset.birds_dataset import BirdsDataset, ListLoader
 from nets import resnet
 from utils import augmentations
-from warmup_scheduler import GradualWarmupScheduler
+# from warmup_scheduler import GradualWarmupScheduler
 
 import apex.amp as amp
 
@@ -60,12 +60,12 @@ def train(args, train_loader, eval_loader):
         net.load_state_dict(torch.load(ckpt_file))
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
-                          weight_decay=1e-6, nesterov=True)
-    # scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
-    net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
-    scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
-    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
-                                              after_scheduler=scheduler)
+                          weight_decay=2e-6, nesterov=True)
+    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
+    net, optimizer = amp.initialize(net, optimizer, opt_level="O0")
+    # scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
+    # scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
+    #                                          after_scheduler=scheduler)
 
     aug = augmentations.Augmentations().cuda()
     batch_iterator = iter(train_loader)
@@ -107,7 +107,7 @@ def train(args, train_loader, eval_loader):
 
         if iteration % cfg['eval_period'] == 0 and iteration != 0:
             loss, accuracy = evaluate(net, eval_loader)
-            scheduler_warmup.step(accuracy)
+            scheduler.step(accuracy)
             print('Evaluation accuracy:', accuracy, flush=True)
 
         if iteration % cfg['save_period'] == 0 and iteration != 0:
