@@ -8,11 +8,12 @@ class Augmentations(nn.Module):
 
     def __init__(self):
         super(Augmentations, self).__init__()
-        self.gaussian_blur = nn.Conv2d(3, 3, (3, 3), padding=1, groups=3, bias=False)
-        self.dropout = nn.Dropout2d(p=0.2)
+        self.gaussian_blur = nn.Conv2d(3, 3, (3, 3), padding=1, groups=3, bias=False).cuda()
+        self.heavy_blur = nn.Conv2d(3, 3, (5, 5), padding=2, groups=3, bias=False).cuda()
+        self.dropout = nn.Dropout(p=0.1).cuda()
 
     def forward(self, image):
-        self.gaussian_blur.weight.data.normal_(0.111, 0.01)
+        self.gaussian_blur.weight.data.normal_(0.111, 0.02)
         image = self.gaussian_blur(image)
 
         gaussian_noise = torch.randn((3, 200, 200), device='cuda')
@@ -27,8 +28,13 @@ class Augmentations(nn.Module):
         brightness = 60 * torch.rand(1, device='cuda') - 30
         image += brightness
 
-        # Dropout
-        image = self.dropout(image)
+        # Dropout or Heavy Gaussian Blur
+        rand = torch.rand(1, device='cuda')
+        if rand > 0.5:
+            image = self.dropout(image)
+        else:
+            self.heavy_blur.weight.data.normal_(0.04, 0.02)
+            image = self.heavy_blur(image)
 
         # Flip horizontal or vertical for NCHW
         dim = torch.rand(1, device='cuda').round().long().data.item() + 2
@@ -56,3 +62,15 @@ class Augmentations(nn.Module):
         image = image[:, :, crop_offset:crop_length, crop_offset:crop_length]
         image = F.interpolate(image, orig_size)
         return image
+
+
+if __name__ == '__main__':
+    import cv2
+    image = cv2.imread('/home/haodong/Downloads/birds/Alpine Leaf Warbler/3.0.1506_cn_0004.jpg')
+    image = torch.Tensor([image]).cuda().permute(0, 3, 1, 2).float()
+    print(image.shape)
+
+    for index in range(10):
+        aug = Augmentations().cuda()
+        img = aug(image).squeeze(0).permute(1, 2, 0).int()
+        cv2.imwrite('/home/haodong/Downloads/draw{}.jpg'.format(index), img.cpu().detach().numpy())
