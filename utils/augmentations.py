@@ -61,16 +61,30 @@ class Augmentations(nn.Module):
         crop_length = crop_length.long()
         image = image[:, :, crop_offset:crop_length, crop_offset:crop_length]
         image = F.interpolate(image, orig_size)
+
+        # Randomly to gray
+        rand = torch.rand(1, device='cuda')
+        if rand > 0.5:
+            gray = image.sum(dim=1, dtype=torch.int16) / image.shape[1]
+            image = torch.stack([gray, gray, gray], dim=1)
         return image
 
 
 if __name__ == '__main__':
     import cv2
-    image = cv2.imread('/home/haodong/Downloads/birds/Alpine Leaf Warbler/3.0.1506_cn_0004.jpg')
-    image = torch.Tensor([image]).cuda().permute(0, 3, 1, 2).float()
-    print(image.shape)
+    files = ['/home/haodong/Downloads/WechatIMG17.jpeg',
+             '/home/haodong/Downloads/17test.png',
+             '/home/haodong/Downloads/example2.png']
+    images = []
+    for file in files:
+        image = cv2.imread(file)
+        image = cv2.resize(image, (200, 200))
+        images.append(image)
 
-    for index in range(10):
-        aug = Augmentations().cuda()
-        img = aug(image).squeeze(0).permute(1, 2, 0).int()
+    images = torch.Tensor(images).cuda().permute(0, 3, 1, 2).float()
+
+    aug = Augmentations().cuda()
+    imgs = aug(images).permute(0, 2, 3, 1).byte()
+
+    for index, img in enumerate(imgs):
         cv2.imwrite('/home/haodong/Downloads/draw{}.jpg'.format(index), img.cpu().detach().numpy())
