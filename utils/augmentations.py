@@ -65,7 +65,7 @@ class Augmentations(nn.Module):
         # Randomly to gray
         rand = torch.rand(1, device='cuda')
         if rand > 0.5:
-            gray = image.sum(dim=1, dtype=torch.int16) / image.shape[1]
+            gray = image.sum(dim=1) / image.shape[1]
             image = torch.stack([gray, gray, gray], dim=1)
         return image
 
