@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset.birds_dataset import BirdsDataset, ListLoader
-from nets import resnet
+from efficientnet_pytorch import EfficientNet
 from utils import augmentations
 # from warmup_scheduler import GradualWarmupScheduler
 
@@ -20,7 +20,7 @@ cfg = {
     'num_classes': 11000,
     'num_workers': 4,
     'verbose_period': 2000,
-    'eval_period': 20000,
+    'eval_period': 40000,
     'save_period': 40000,
     'save_folder': 'ckpt/',
     'ckpt_name': 'bird_cls',
@@ -53,16 +53,19 @@ def evaluate(net, eval_loader):
 
 
 def train(args, train_loader, eval_loader):
-    net = resnet.resnext50_32x4d(num_classes=cfg['num_classes']).cuda()
+    net = EfficientNet.from_name('efficientnet-b7', override_params={
+                                     'num_classes': cfg['num_classes'],
+                                     'dropout_rate': 0.0,
+                                     'drop_connect_rate': 0.0,
+                                 }).cuda()
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
         ckpt_file = cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(args.resume) + '.pth'
         net.load_state_dict(torch.load(ckpt_file))
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
-                          weight_decay=2e-6, nesterov=True)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
     scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
-    net, optimizer = amp.initialize(net, optimizer, opt_level="O0")
+    net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
     # scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
     # scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
     #                                          after_scheduler=scheduler)

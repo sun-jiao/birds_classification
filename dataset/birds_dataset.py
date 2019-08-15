@@ -1,9 +1,9 @@
 import os
 import cv2
-import time
+# import time
 import numpy as np
-import imgaug as ia
-import imgaug.augmenters as iaa
+# import imgaug as ia
+# import imgaug.augmenters as iaa
 
 import torch.utils.data as data
 from collections import Counter
@@ -11,7 +11,7 @@ from collections import Counter
 SEED = 20190519
 EVAL_RATIO = 0.05
 
-ia.seed(int(time.time()))
+'''ia.seed(int(time.time()))
 
 seq = iaa.Sequential([
     iaa.OneOf([
@@ -19,7 +19,7 @@ seq = iaa.Sequential([
         iaa.PerspectiveTransform(scale=(0.01, 0.10)),
         iaa.PiecewiseAffine(scale=(0.01, 0.03)),
     ]),
-])
+])'''
 '''iaa.OneOf([
     iaa.GammaContrast(gamma=(0.8, 1.2)),
     iaa.SigmoidContrast(cutoff=(0.4, 0.6), gain=(5, 10)),
@@ -77,8 +77,9 @@ class ListLoader(object):
             if multiple > 1:
                 for i in range(multiple):
                     extra_train_indices.append(index)
-        train_indices = np.concatenate((train_indices, extra_train_indices))
 
+        extra_train_indices = np.asarray(extra_train_indices, dtype=train_indices.dtype)
+        train_indices = np.concatenate((train_indices, extra_train_indices))
         return self.image_list, train_indices, eval_indices
 
     def multiples(self):
@@ -122,7 +123,7 @@ if __name__ == '__main__':
     print('train_lst', train_lst, len(train_lst))
     print('eval_lst', eval_lst, len(eval_lst))
 
-    bd = BirdsDataset(img_list, eval_lst)
+    bd = BirdsDataset(img_list, eval_lst, list_loader.multiples(), False)
     image, type_id = bd[1023]
     print('image', image)
     print('type_id', type_id, type(type_id))
