@@ -1,0 +1,133 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+<link rel="stylesheet" href="http://cdn.bootcss.com/ng-img-crop/0.3.2/ng-img-crop.css" type="text/css">
+<script type="application/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.1/angular.min.js"></script>
+<script type="application/javascript" src="http://cdn.bootcss.com/ng-img-crop/0.3.2/ng-img-crop.js"></script>
+<title>dongniao</title>
+
+<script type="application/javascript">
+
+function state_change(resp) {
+    var label = document.getElementById("bird_class");
+    label.innerHTML = "&nbsp";
+    var canvas = document.getElementById("canvas");
+    var context = canvas.getContext("2d");
+    var select = document.getElementById("select_image");
+    select.disabled = false;
+
+    context.beginPath();
+    context.lineWidth = 3;
+    context.strokeStyle = '#aaffaa';
+    context.font = "20px Georgia";
+    context.fillStyle = "#ff1122";
+
+    for (var i in resp.data) {
+      var bird = resp.data[i];
+
+      var confident = bird.top3[0][0];
+      if (confident > 30.0) {
+        var loc = bird.loc;
+        context.rect(loc[0], loc[1], loc[2] - loc[0], loc[3] - loc[1]);
+
+        var name = bird.top3[0][1];
+        var str = name + "(" + parseInt(confident) + "%)";
+        context.fillText(str, loc[0], loc[1] - 8);
+        context.stroke();
+      }
+    }
+    context.closePath();
+}
+
+function dataURLtoBlob(dataurl) {
+    var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], {type:mime});
+}
+
+function crop_new_image() {
+    var label = document.getElementById("bird_class");
+}
+
+angular.module("app", ["ngImgCrop"])
+    .controller("Ctrl", function($scope, $http) {
+
+        function upload_image() {
+            var label = document.getElementById("bird_class")
+            var image = document.getElementById("show_bird");
+            var select = document.getElementById("select_image");
+            select.disabled = true;
+            var blob = dataURLtoBlob(image.src);
+           	console.log(select.files[0])
+            label.innerHTML = "In progress ....";
+            var myform = new FormData();
+            myform.append('image', blob);
+            myform.append('async', '0');
+            myform.append('sc', 'web');
+           	console.log(myform);
+            $http.post('http://au.dongniao.net:8080/birds', myform, {
+                headers:  {'Content-Type': undefined,
+                            'Access-Control-Allow-Origin': null},
+                transformRequest: angular.identity
+                }).then(state_change);
+        }
+
+
+        var handle_file_select=function(event) {
+            var file = event.currentTarget.files[0];
+            var reader = new FileReader();
+            var label = document.getElementById("bird_class")
+            var image = document.getElementById("show_bird");
+            var canvas = document.getElementById("canvas");
+            var context = canvas.getContext("2d");
+
+            if (file == null) {
+                return;
+            }
+            label.innerHTML = "&nbsp";
+            image.src = "";
+
+            reader.onload = function (event) {
+                $scope.$apply(function($scope) {
+                    image.src = event.target.result;
+                    //canvas.width = image.width;
+                    //canvas.height = image.height;
+                    context.clearRect(0, 0, canvas.width, canvas.height);
+                    context.drawImage(image, 0, 0);
+                    upload_image();
+                });
+            };
+            reader.readAsDataURL(file);
+        };
+
+        angular.element(document.querySelector("#select_image")).on("change", handle_file_select);
+});
+</script>
+</head>
+
+<body ng-app="app" ng-controller="Ctrl">
+<p><center><h1>World Birds Classification</h1></center>
+<table width=800 height=500 align="center">
+<tr>
+    <td width=100>
+        <div align="left">
+        <form id="form" style="width: 200px">
+            <p><input type="file" id="select_image" value="Select" /></p>
+        </form>
+        </div>
+    </td>
+    <td width=700>
+        <div align="center">
+          <img id="show_bird"></img>
+          <canvas id="canvas" width=700 height=600></canvas>
+        <p><font color="#FF9999" id="bird_class"></font></p>
+        </div>
+    </td>
+</tr>
+</table>
+</body>
+</html>
