@@ -9,6 +9,8 @@
 
 <script type="application/javascript">
 
+var offset = 40;
+
 function state_change(resp) {
     var label = document.getElementById("bird_class");
     label.innerHTML = "&nbsp";
@@ -20,7 +22,7 @@ function state_change(resp) {
     context.beginPath();
     context.lineWidth = 3;
     context.strokeStyle = '#aaffaa';
-    context.font = "20px Georgia";
+    context.font = "18px Georgia";
     context.fillStyle = "#ff1122";
 
     for (var i in resp.data) {
@@ -29,11 +31,11 @@ function state_change(resp) {
       var confident = bird.top3[0][0];
       if (confident > 30.0) {
         var loc = bird.loc;
-        context.rect(loc[0], loc[1], loc[2] - loc[0], loc[3] - loc[1]);
+        context.rect(loc[0] + offset, loc[1] + offset, loc[2] - loc[0], loc[3] - loc[1]);
 
         var name = bird.top3[0][1];
         var str = name + "(" + parseInt(confident) + "%)";
-        context.fillText(str, loc[0], loc[1] - 8);
+        context.fillText(str, loc[0] + offset, loc[1] + offset - 8);
         context.stroke();
       }
     }
@@ -47,10 +49,6 @@ function dataURLtoBlob(dataurl) {
         u8arr[n] = bstr.charCodeAt(n);
     }
     return new Blob([u8arr], {type:mime});
-}
-
-function crop_new_image() {
-    var label = document.getElementById("bird_class");
 }
 
 angular.module("app", ["ngImgCrop"])
@@ -93,11 +91,13 @@ angular.module("app", ["ngImgCrop"])
 
             reader.onload = function (event) {
                 $scope.$apply(function($scope) {
+                    image.onload = function() {
+                      canvas.width = image.width + offset * 2;
+                      canvas.height = image.height + offset * 2;
+                      context.drawImage(image, offset, offset);
+                    }
                     image.src = event.target.result;
-                    //canvas.width = image.width;
-                    //canvas.height = image.height;
-                    context.clearRect(0, 0, canvas.width, canvas.height);
-                    context.drawImage(image, 0, 0);
+                    //context.clearRect(0, 0, canvas.width, canvas.height);
                     upload_image();
                 });
             };
@@ -122,8 +122,14 @@ angular.module("app", ["ngImgCrop"])
     </td>
     <td width=700>
         <div align="center">
-          <img id="show_bird"></img>
-          <canvas id="canvas" width=700 height=600></canvas>
+          <table>
+            <tr>
+              <canvas id="canvas" width=700 height=600></canvas>
+            </tr>
+            <tr>
+              <img id="show_bird"></img>
+            </tr>
+          </table>
         <p><font color="#FF9999" id="bird_class"></font></p>
         </div>
     </td>
