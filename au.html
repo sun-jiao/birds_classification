@@ -10,6 +10,7 @@
 <script type="application/javascript">
 
 var offset = 40;
+var image = new Image()
 
 function state_change(resp) {
     var label = document.getElementById("bird_class");
@@ -23,7 +24,7 @@ function state_change(resp) {
     context.lineWidth = 3;
     context.strokeStyle = '#aaffaa';
     context.font = "18px Georgia";
-    context.fillStyle = "#ff1122";
+    context.fillStyle = "#ffff99";
 
     for (var i in resp.data) {
       var bird = resp.data[i];
@@ -56,7 +57,6 @@ angular.module("app", ["ngImgCrop"])
 
         function upload_image() {
             var label = document.getElementById("bird_class")
-            var image = document.getElementById("show_bird");
             var select = document.getElementById("select_image");
             select.disabled = true;
             var blob = dataURLtoBlob(image.src);
@@ -79,7 +79,6 @@ angular.module("app", ["ngImgCrop"])
             var file = event.currentTarget.files[0];
             var reader = new FileReader();
             var label = document.getElementById("bird_class")
-            var image = document.getElementById("show_bird");
             var canvas = document.getElementById("canvas");
             var context = canvas.getContext("2d");
 
@@ -125,9 +124,6 @@ angular.module("app", ["ngImgCrop"])
           <table>
             <tr>
               <canvas id="canvas" width=700 height=600></canvas>
-            </tr>
-            <tr>
-              <img id="show_bird"></img>
             </tr>
           </table>
         <p><font color="#FF9999" id="bird_class"></font></p>
