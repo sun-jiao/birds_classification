@@ -82,7 +82,7 @@ def birds():
             print(index, loc)
             subimg = img[int(loc[1]):int(loc[3]), int(loc[0]):int(loc[2])]
             print('shape:', subimg.shape)
-            cv2.imwrite('{}_try.jpg'.format(index), subimg)
+            # cv2.imwrite('{}_try.jpg'.format(index), subimg)
 
             # For classification
             subimg = cv2.resize(subimg, IMAGE_SHAPE)
