@@ -52,8 +52,18 @@ def evaluate(net, eval_loader):
     return total_loss / iteration, sum_accuracy / iteration
 
 
+def warmup_learning_rate(optimizer, steps, warmup_steps):
+    min_lr = args.lr / 100
+    slope = (args.lr - min_lr) / warmup_steps
+
+    lr = steps * slope + min_lr
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+
 def train(args, train_loader, eval_loader):
-    net = EfficientNet.from_name('efficientnet-b7', override_params={
+    net = EfficientNet.from_name('efficientnet-b0', override_params={
+                                     'image_size': 100,
                                      'num_classes': cfg['num_classes'],
                                      'dropout_rate': 0.0,
                                      'drop_connect_rate': 0.0,
@@ -65,13 +75,15 @@ def train(args, train_loader, eval_loader):
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
     scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
-    net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
+    net, optimizer = amp.initialize(net, optimizer, opt_level="O0")
     # scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
     # scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
     #                                          after_scheduler=scheduler)
 
     aug = augmentations.Augmentations().cuda()
     batch_iterator = iter(train_loader)
+    sum_accuracy = 0
+    step = 0
     for iteration in range(args.resume + 1, args.max_epoch * cfg['nr_images'] // args.batch_size):
         t0 = time.time()
         try:
@@ -105,13 +117,21 @@ def train(args, train_loader, eval_loader):
             _, predict = torch.max(out, 1)
             correct = (predict == type_ids)
             accuracy = correct.sum().item() / correct.size()[0]
-            print('step: %d loss: %.4f | accuracy: %.4f | time: %.4f sec.' %
+            print('iter: %d loss: %.4f | acc: %.4f | time: %.4f sec.' %
                   (iteration, loss.item(), accuracy, (t1 - t0)), flush=True)
+            sum_accuracy += accuracy
+            step += 1
+
+        warmup_steps = cfg['verbose_period'] * 4
+        if iteration < warmup_steps:
+            warmup_learning_rate(optimizer, iteration, warmup_steps)
 
         if iteration % cfg['eval_period'] == 0 and iteration != 0:
             loss, accuracy = evaluate(net, eval_loader)
             scheduler.step(accuracy)
-            print('Evaluation accuracy:', accuracy, flush=True)
+            print('Eval accuracy:{} | Train accuracy:{}'.format(accuracy, sum_accuracy/step), flush=True)
+            sum_accuracy = 0
+            step = 0
 
         if iteration % cfg['save_period'] == 0 and iteration != 0:
             # save checkpoint
@@ -124,11 +144,12 @@ def train(args, train_loader, eval_loader):
 
 if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.enabled = True
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
     parser.add_argument('--max_epoch', default=100, type=int, help='Maximum epoches for training')
-    parser.add_argument('--dataset_root', default='/media/data2/i18n/V1', type=str, help='Root path of data')
+    parser.add_argument('--dataset_root', default='/media/data2/i18n/V2', type=str, help='Root path of data')
     parser.add_argument('--lr', default=0.1, type=float, help='Initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float, help='Momentum value for optimizer')
     parser.add_argument('--resume', default=0, type=int, help='Checkpoint steps to resume training from')
@@ -141,10 +162,11 @@ if __name__ == '__main__':
 
     train_set = BirdsDataset(image_list, train_indices, list_loader.multiples(), True)
     eval_set = BirdsDataset(image_list, eval_indices, list_loader.multiples(), False)
+    print('train set: {} eval set: {}'.format(len(train_set), len(eval_set)))
 
     train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
                                    shuffle=True, pin_memory=True)
-    eval_loader = data.DataLoader(eval_set, args.batch_size // 2, num_workers=cfg['num_workers'],
+    eval_loader = data.DataLoader(eval_set, args.batch_size // 4, num_workers=cfg['num_workers'],
                                   shuffle=False, pin_memory=True)
     t1 = time.time()
     print('Load dataset with {} secs'.format(t1 - t0))
