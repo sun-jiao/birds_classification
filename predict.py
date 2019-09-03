@@ -5,14 +5,14 @@ import argparse
 import torch
 import torch.nn as nn
 
-from nets import resnet
+from efficientnet_pytorch import EfficientNet
 from train import cfg
 
-IMAGE_SHAPE = (200, 200)
+IMAGE_SHAPE = (100, 100)
 
 
 def predict(args):
-    net = resnet.resnext50_32x4d(num_classes=cfg['num_classes'])
+    net = EfficientNet.from_name('efficientnet-b0', override_params={'num_classes': cfg['num_classes']})
     net.load_state_dict(torch.load(args.trained_model, map_location='cpu'))
     net.eval()
 

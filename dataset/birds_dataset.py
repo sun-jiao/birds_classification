@@ -8,6 +8,8 @@ import numpy as np
 import torch.utils.data as data
 from collections import Counter
 
+IMAGE_SHAPE = (100, 100)
+
 SEED = 20190519
 EVAL_RATIO = 0.05
 
@@ -47,11 +49,18 @@ class ListLoader(object):
                 self.labelmap[type_id] = type_name
                 for image_file in os.listdir(os.path.join(root_path, dir_name)):
                     self.category_count[type_id] += 1
+
+                for image_file in os.listdir(os.path.join(root_path, dir_name)):
                     full_path = os.path.join(root_path, dir_name, image_file)
                     self.image_list.append((full_path, type_id))
 
         avg_count = sum(self.category_count.values()) / len(self.category_count)
         print('Avg count per category:', avg_count)
+        minimum = min(self.category_count, key=self.category_count.get)
+        print('Min count category:', self.category_count[minimum])
+        maximum = max(self.category_count, key=self.category_count.get)
+        print('Max count category:', self.category_count[maximum])
+
         self.category_multiple = {}
         small_cat = 0
         for type_id in self.category_count:
@@ -88,7 +97,8 @@ class ListLoader(object):
     def export_labelmap(self, path='labelmap.csv'):
         with open(path, 'w') as fp:
             for type_id, type_name in self.labelmap.items():
-                fp.write(str(type_id) + ',' + type_name + '\n')
+                count = self.category_count[type_id]
+                fp.write(str(type_id) + ',' + type_name + ',' + str(count) + '\n')
 
 
 class BirdsDataset(data.Dataset):
@@ -102,6 +112,7 @@ class BirdsDataset(data.Dataset):
     def __getitem__(self, index):
         image_path, type_id = self.image_list[self.image_indices[index]]
         image = cv2.imread(image_path)
+        image = cv2.resize(image, IMAGE_SHAPE)
         if isinstance(type_id, str):
             print('What:', type_id)
         '''if self.is_training:
