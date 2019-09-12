@@ -8,7 +8,7 @@ import numpy as np
 import torch.utils.data as data
 from collections import Counter
 
-IMAGE_SHAPE = (100, 100)
+IMAGE_SHAPE = (200, 200)
 
 SEED = 20190519
 EVAL_RATIO = 0.05
@@ -50,6 +50,9 @@ class ListLoader(object):
                 for image_file in os.listdir(os.path.join(root_path, dir_name)):
                     self.category_count[type_id] += 1
 
+                if self.category_count[type_id] < 815:
+                    continue
+
                 for image_file in os.listdir(os.path.join(root_path, dir_name)):
                     full_path = os.path.join(root_path, dir_name, image_file)
                     self.image_list.append((full_path, type_id))
@@ -64,7 +67,7 @@ class ListLoader(object):
         self.category_multiple = {}
         small_cat = 0
         for type_id in self.category_count:
-            multiple = int(avg_count / self.category_count[type_id])
+            multiple = int(3 * avg_count / self.category_count[type_id])
             if multiple > 1:
                 small_cat += 1
             self.category_multiple[type_id] = multiple

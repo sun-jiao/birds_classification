@@ -63,7 +63,7 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
 
 def train(args, train_loader, eval_loader):
     net = EfficientNet.from_name('efficientnet-b0', override_params={
-                                     'image_size': 100,
+                                     'image_size': 200,
                                      'num_classes': cfg['num_classes'],
                                      'dropout_rate': 0.0,
                                      'drop_connect_rate': 0.0,
@@ -75,7 +75,7 @@ def train(args, train_loader, eval_loader):
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
     scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
-    net, optimizer = amp.initialize(net, optimizer, opt_level="O0")
+    net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
     # scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
     # scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
     #                                          after_scheduler=scheduler)
