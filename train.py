@@ -5,6 +5,7 @@ import torch
 import torch.optim as optim
 import torch.utils.data as data
 import torch.nn.functional as F
+import torch.nn as nn
 
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -97,6 +98,10 @@ def train(args, train_loader, eval_loader):
         images = Variable(images.cuda()).permute(0, 3, 1, 2).float()
         type_ids = Variable(type_ids.cuda())
 
+        one_hot = torch.cuda.FloatTensor(type_ids.shape[0], cfg['num_classes'])
+        one_hot.fill_(4.54587e-5)
+        one_hot.scatter_(1, type_ids.unsqueeze(1), 0.5)
+
         # augmentation
         images = aug(images)
         # forward
@@ -104,11 +109,13 @@ def train(args, train_loader, eval_loader):
 
         # backprop
         optimizer.zero_grad()
-        loss = F.cross_entropy(out, type_ids)
+        loss = torch.sum(- one_hot * F.log_softmax(out, -1), -1).mean()
+        # loss = F.cross_entropy(out, type_ids)
 
         with amp.scale_loss(loss, optimizer) as scaled_loss:
             scaled_loss.backward()
 
+        nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
         optimizer.step()
         t1 = time.time()
 
