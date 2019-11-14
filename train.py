@@ -74,9 +74,24 @@ def train(args, train_loader, eval_loader):
         ckpt_file = cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(args.resume) + '.pth'
         net.load_state_dict(torch.load(ckpt_file))
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
+    if args.finetune:
+        # Freeze all layers
+        for param in net.parameters():
+            param.requires_grad = False
+        # Unfreeze some layers
+        for index in [12, 13, 14, 15]:
+            for param in net._blocks[index].parameters():
+                param.requires_grad = True
+        net._conv_head.weight.requires_grad = True
+        net._fc.weight.requires_grad = True
+        optimizer = optim.SGD(filter(lambda param: param.requires_grad, net.parameters()),
+                              lr=args.lr, momentum=args.momentum, nesterov=False)
+    else:
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
     scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
-    net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
+
+    if args.fp16:
+        net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
     # scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
     # scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
     #                                          after_scheduler=scheduler)
@@ -112,8 +127,11 @@ def train(args, train_loader, eval_loader):
         loss = torch.sum(- one_hot * F.log_softmax(out, -1), -1).mean()
         # loss = F.cross_entropy(out, type_ids)
 
-        with amp.scale_loss(loss, optimizer) as scaled_loss:
-            scaled_loss.backward()
+        if args.fp16:
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
 
         nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
         optimizer.step()
@@ -160,10 +178,12 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=0.1, type=float, help='Initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float, help='Momentum value for optimizer')
     parser.add_argument('--resume', default=0, type=int, help='Checkpoint steps to resume training from')
+    parser.add_argument('--finetune', default=False, type=bool, help='Finetune model by using all categories')
+    parser.add_argument('--fp16', default=False, type=bool, help='Use float16 precision to train')
     args = parser.parse_args()
 
     t0 = time.time()
-    list_loader = ListLoader(args.dataset_root, cfg['num_classes'])
+    list_loader = ListLoader(args.dataset_root, cfg['num_classes'], args.finetune)
     list_loader.export_labelmap()
     image_list, train_indices, eval_indices = list_loader.image_indices()
 

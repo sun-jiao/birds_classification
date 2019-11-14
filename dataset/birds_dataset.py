@@ -32,7 +32,7 @@ seq = iaa.Sequential([
 
 
 class ListLoader(object):
-    def __init__(self, root_path, num_classes):
+    def __init__(self, root_path, num_classes, finetune):
         np.random.seed(SEED)
 
         self.category_count = Counter()  # number of images for each category
@@ -50,7 +50,7 @@ class ListLoader(object):
                 for image_file in os.listdir(os.path.join(root_path, dir_name)):
                     self.category_count[type_id] += 1
 
-                if self.category_count[type_id] < 815:
+                if not finetune and self.category_count[type_id] < 815:
                     continue
 
                 for image_file in os.listdir(os.path.join(root_path, dir_name)):
