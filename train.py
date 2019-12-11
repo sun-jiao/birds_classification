@@ -63,7 +63,7 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
 
 
 def train(args, train_loader, eval_loader):
-    net = EfficientNet.from_name('efficientnet-b0', override_params={
+    net = EfficientNet.from_name('efficientnet-b2', override_params={
                                      'image_size': 200,
                                      'num_classes': cfg['num_classes'],
                                      'dropout_rate': 0.0,
@@ -75,11 +75,12 @@ def train(args, train_loader, eval_loader):
         net.load_state_dict(torch.load(ckpt_file))
 
     if args.finetune:
+        print('Finetuning......')
         # Freeze all layers
         for param in net.parameters():
             param.requires_grad = False
         # Unfreeze some layers
-        for index in [12, 13, 14, 15]:
+        for index in [17, 18, 19, 20, 21, 22]:
             for param in net._blocks[index].parameters():
                 param.requires_grad = True
         net._conv_head.weight.requires_grad = True

@@ -6,6 +6,13 @@ import torch.nn.functional as F
 IMAGE_SHAPE = (200, 200)
 
 
+def generate_grid(h, w):
+        x = torch.arange(0, h)
+        y = torch.arange(0, w)
+        grid = torch.stack([x.repeat(w), y.repeat(h,1).t().contiguous().view(-1)],1)
+        return grid
+
+
 class Augmentations(nn.Module):
 
     def __init__(self):
@@ -14,14 +21,31 @@ class Augmentations(nn.Module):
         self.heavy_blur = nn.Conv2d(3, 3, (5, 5), padding=2, groups=3, bias=False).cuda()
         self.dropout = nn.Dropout(p=0.1).cuda()
 
+    def _image_part(self, split, coordinates, index):
+        coord = coordinates[index]
+        part = IMAGE_SHAPE[0]/split
+        return coord[0] * part, (coord[0] + 1) * part, coord[1] * part, (coord[1] + 1) * part
+
+    def puzzle(self, image):
+        raw_image = image.clone()
+        split = 2
+        coordinates = generate_grid(split, split)
+        for index, offset in enumerate(torch.randperm(split*split)):
+            nx1, nx2, ny1, ny2 = self._image_part(split, coordinates, index)
+            ox1, ox2, oy1, oy2 = self._image_part(split, coordinates, offset)
+            image[:, :, nx1:nx2, ny1:ny2] = raw_image[:, :, ox1:ox2, oy1:oy2]
+            dim = torch.rand(1, device='cuda').round().long().data.item() + 2
+            image[:, :, nx1:nx2, ny1:ny2] = torch.flip(raw_image[:, :, ox1:ox2, oy1:oy2], (dim,))
+        return image
+
     def forward(self, image):
         # Gaussian blur
-        self.gaussian_blur.weight.data.normal_(0.111, 0.02)
+        '''self.gaussian_blur.weight.data.normal_(0.111, 0.02)
         image = self.gaussian_blur(image)
 
         gaussian_noise = torch.randn((3, IMAGE_SHAPE[0], IMAGE_SHAPE[1]), device='cuda')
         noise_scale = torch.rand(1, device='cuda') * 10
-        image += gaussian_noise * noise_scale
+        image += gaussian_noise * noise_scale'''
 
         # Contrast 0.6 ~ 1.4
         gamma = 0.8 * torch.rand(1, device='cuda') + 0.6
@@ -31,13 +55,15 @@ class Augmentations(nn.Module):
         brightness = 60 * torch.rand(1, device='cuda') - 30
         image += brightness
 
+        image = torch.clamp(image, 0, 255)
+
         # Dropout or Heavy Gaussian Blur
-        rand = torch.rand(1, device='cuda')
-        if rand > 0.5:
-            image = self.dropout(image)
-        else:
-            self.heavy_blur.weight.data.normal_(0.04, 0.02)
-            image = self.heavy_blur(image)
+        #rand = torch.rand(1, device='cuda')
+        #if rand > 0.5:
+        #    image = self.dropout(image)
+        #else:
+        #    self.heavy_blur.weight.data.normal_(0.04, 0.02)
+        #    image = self.heavy_blur(image)'''
 
         # Flip horizontal or vertical for NCHW
         dim = torch.rand(1, device='cuda').round().long().data.item() + 2
@@ -70,18 +96,19 @@ class Augmentations(nn.Module):
         image = F.interpolate(image, orig_size)
 
         # Randomly to gray
-        rand = torch.rand(1, device='cuda')
+        '''rand = torch.rand(1, device='cuda')
         if rand > 0.5:
             gray = image.sum(dim=1) / image.shape[1]
-            image = torch.stack([gray, gray, gray], dim=1)
+            image = torch.stack([gray, gray, gray], dim=1)'''
+        image = self.puzzle(image)
         return image
 
 
 if __name__ == '__main__':
     import cv2
-    files = ['/home/haodong/Downloads/WechatIMG17.jpeg',
-             '/home/haodong/Downloads/17test.png',
-             '/home/haodong/Downloads/example2.png']
+    files = ['/home/haodong/Downloads/samples/10010.House_Bunting_0_512_182_819_488_-_g_0061.jpg',
+             '/home/haodong/Downloads/samples/2002.Mindanao_Bleeding-heart_0_26_366_815_1156_-_g_0090.jpg',
+             '/home/haodong/Downloads/samples/8288.Dark-eyed_White-eye_0_221_280_607_666_-_e_0125.jpg']
     images = []
     for file in files:
         image = cv2.imread(file)

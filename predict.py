@@ -12,7 +12,7 @@ IMAGE_SHAPE = (100, 100)
 
 
 def predict(args):
-    net = EfficientNet.from_name('efficientnet-b0', override_params={'num_classes': cfg['num_classes']})
+    net = EfficientNet.from_name('efficientnet-b2', override_params={'num_classes': cfg['num_classes']})
     net.load_state_dict(torch.load(args.trained_model, map_location='cpu'))
     net.eval()
 
