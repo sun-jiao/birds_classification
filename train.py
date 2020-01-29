@@ -9,7 +9,7 @@ import torch.nn as nn
 
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from dataset.birds_dataset import BirdsDataset, ListLoader
+from dataset.birds_dataset import BirdsDataset, ListLoader, IMAGE_SHAPE
 from efficientnet_pytorch import EfficientNet
 from utils import augmentations
 # from warmup_scheduler import GradualWarmupScheduler
@@ -64,7 +64,7 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
 
 def train(args, train_loader, eval_loader):
     net = EfficientNet.from_name('efficientnet-b2', override_params={
-                                     'image_size': 200,
+                                     'image_size': IMAGE_SHAPE[0],
                                      'num_classes': cfg['num_classes'],
                                      'dropout_rate': 0.0,
                                      'drop_connect_rate': 0.0,
@@ -175,7 +175,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
     parser.add_argument('--max_epoch', default=100, type=int, help='Maximum epoches for training')
-    parser.add_argument('--dataset_root', default='/media/data2/i18n/V2', type=str, help='Root path of data')
+    parser.add_argument('--dataset_root', default='/media/data2/i18n/V3', type=str, help='Root path of data')
     parser.add_argument('--lr', default=0.1, type=float, help='Initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float, help='Momentum value for optimizer')
     parser.add_argument('--resume', default=0, type=int, help='Checkpoint steps to resume training from')
@@ -193,9 +193,11 @@ if __name__ == '__main__':
     print('train set: {} eval set: {}'.format(len(train_set), len(eval_set)))
 
     train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
-                                   shuffle=True, pin_memory=True)
+                                   shuffle=True, pin_memory=True,
+                                   collate_fn=BirdsDataset.my_collate)
     eval_loader = data.DataLoader(eval_set, args.batch_size // 4, num_workers=cfg['num_workers'],
-                                  shuffle=False, pin_memory=True)
+                                  shuffle=False, pin_memory=True,
+                                  collate_fn=BirdsDataset.my_collate)
     t1 = time.time()
     print('Load dataset with {} secs'.format(t1 - t0))
 

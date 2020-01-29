@@ -8,7 +8,7 @@ import numpy as np
 import torch.utils.data as data
 from collections import Counter
 
-IMAGE_SHAPE = (200, 200)
+IMAGE_SHAPE = (300, 300)
 
 SEED = 20190519
 EVAL_RATIO = 0.05
@@ -115,7 +115,13 @@ class BirdsDataset(data.Dataset):
     def __getitem__(self, index):
         image_path, type_id = self.image_list[self.image_indices[index]]
         image = cv2.imread(image_path)
-        image = cv2.resize(image, IMAGE_SHAPE)
+        if image is None:
+            print("[Error] {} can't be read".format(image_path))
+            return None
+        if image.shape != (IMAGE_SHAPE[0], IMAGE_SHAPE[1], 3):
+            image = cv2.resize(image, IMAGE_SHAPE)
+            print("[Warn] {} has shape {}".format(image_path, image.shape))
+            return None
         if isinstance(type_id, str):
             print('What:', type_id)
         '''if self.is_training:
@@ -129,6 +135,11 @@ class BirdsDataset(data.Dataset):
 
     def __len__(self):
         return len(self.image_indices)
+
+    @staticmethod
+    def my_collate(batch):
+        batch = filter(lambda img: img is not None, batch)
+        return data.dataloader.default_collate(list(batch))
 
 
 if __name__ == '__main__':
