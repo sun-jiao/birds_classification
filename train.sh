@@ -1,1 +1,1 @@
-python3 train.py --momentum=0.9 --lr=0.5 --batch_size=64 |tee log
+python3 train.py --momentum=0.9 --lr=2.0 --batch_size=32 |tee log
