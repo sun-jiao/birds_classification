@@ -110,6 +110,7 @@ class EvalThread(threading.Thread):
                     begin = time.time()
                 img_batch = []
                 label_batch = []
+                path_batch = []
 
     def dump(self):
         with open("total.csv", "w") as fp:
