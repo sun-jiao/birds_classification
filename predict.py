@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from efficientnet_pytorch import EfficientNet
 
-IMAGE_SHAPE = (100, 100)
+IMAGE_SHAPE = (300, 300)
 
 
 def load_label_map(filename):
