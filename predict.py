@@ -280,7 +280,8 @@ class SSD(nn.Module):
         self.num_classes = num_classes
         self.cfg = voc
         self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        with torch.no_grad():
+            self.priors = Variable(self.priorbox.forward())
         self.size = size
 
         # SSD network
@@ -543,14 +544,14 @@ def load_label_map(filename):
 
 def predict(args):
     detect_net = build_ssd("test", 300, 21)  # initialize SSD
-    detect_net.load_state_dict(torch.load("ssd300_mAP_77.43_v2.pth", map_location="cpu"))
+    detect_net.load_state_dict(torch.load(args.detect_model, map_location="cpu"))
     transform = BaseTransform(detect_net.size, (104 / 256.0, 117 / 256.0, 123 / 256.0))
 
     net = EfficientNet.from_name('efficientnet-b2', override_params={'num_classes': 11000})
-    net.load_state_dict(torch.load(args.trained_model, map_location='cpu'))
+    net.load_state_dict(torch.load(args.classify_model, map_location='cpu'))
     net.eval()
 
-    softmax = nn.Softmax()
+    softmax = nn.Softmax(dim=1)
 
     img = cv2.imread(args.image_file)
 
@@ -575,7 +576,9 @@ def predict(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_file', default=None, type=str, help='Image file to be predicted')
-    parser.add_argument('--trained_model', default='ckpt/bird_cls_0.pth',
+    parser.add_argument('--classify_model', default='ckpt/bird_cls_0.pth',
+                        type=str, help='Trained ckpt file path to open')
+    parser.add_argument('--detect_model', default='ckpt/bird_cls_0.pth',
                         type=str, help='Trained ckpt file path to open')
     args = parser.parse_args()
 
