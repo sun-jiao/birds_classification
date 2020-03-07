@@ -525,7 +525,7 @@ def detect(img, net, transform):
             loc = loc[1:]
             pt = loc * scale
             print(score, pt)
-            img = img[int(pt[0]):int(pt[2]), int(pt[1]):int(pt[3])]
+            img = img[int(pt[1]):int(pt[3]), int(pt[0]):int(pt[2])]
             return img
 
 
