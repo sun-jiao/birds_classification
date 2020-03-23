@@ -1,6 +1,7 @@
 import os
 import cv2
 import csv
+import sys
 import time
 import argparse
 
@@ -39,7 +40,7 @@ def predict(net, image_file):
 
     tensor_img = torch.from_numpy(img)
     result = net(tensor_img.unsqueeze(0).permute(0, 3, 1, 2).float())
-    values, indices = torch.topk(result, 5)
+    values, indices = torch.topk(result, 500)
     return indices[0].tolist()
 
 
@@ -62,6 +63,11 @@ def main(args):
         for image_file in os.listdir(os.path.join(args.eval_data, dir_name)):
             full_path = os.path.join(args.eval_data, dir_name, image_file)
             result = predict(net, full_path)
+            # filter out non-chinses-bird and get top5
+            result = list(filter(lambda id: label_map.get(id, None) is not None, result))[:5]
+            if len(result) != 5:
+                print(f"Totally wrong prediction! {len(result)}", file=sys.stderr)
+                sys.exit(1)
             # check top1
             pred_name = label_map.get(result[0], None)
             if pred_name == real_name:
@@ -71,7 +77,10 @@ def main(args):
             if check_top5(label_map, result[1:], real_name):
                 top5 += 1
             count += 1
-        print(f"{real_name}, {top1/count:.4f}, {top5/count:.4f}")
+        if count == 0:
+            print(f"{real_name}, {count:.4f}, {count:.4f}")
+        else:
+            print(f"{real_name}, {top1/count:.4f}, {top5/count:.4f}")
 
         total_top1 += top1
         total_top5 += top5
