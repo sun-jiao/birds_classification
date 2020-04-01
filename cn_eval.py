@@ -80,7 +80,7 @@ def main(args):
         if count == 0:
             print(f"{real_name}, {count:.4f}, {count:.4f}")
         else:
-            print(f"{real_name}, {top1/count:.4f}, {top5/count:.4f}")
+            print(f"{real_name}, {count}, {top1}, {top5}, {top1/count:.4f}, {top5/count:.4f}")
 
         total_top1 += top1
         total_top5 += top5
