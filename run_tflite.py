@@ -1,4 +1,5 @@
 import cv2
+import time
 import argparse
 import numpy as np
 import tensorflow as tf
@@ -19,9 +20,11 @@ def main(args):
     img = img.reshape((1, 3, 300, 300)).astype(np.float32)
     interpreter.set_tensor(input_details[0]["index"], img)
 
+    begin = time.time()
     interpreter.invoke()
 
     output_data = interpreter.get_tensor(output_details[0]["index"])
+    print("time:", time.time() - begin)
     print("TFLITE output", output_data, output_data.shape)
 
 
