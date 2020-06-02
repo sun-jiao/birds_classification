@@ -7,17 +7,20 @@ import torch.utils.data as data
 import torch.nn.functional as F
 import torch.nn as nn
 
+import pycls.core.model_builder as model_builder
+from pycls.core.config import cfg
+
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from dataset.birds_dataset import BirdsDataset, ListLoader, IMAGE_SHAPE
-from efficientnet_pytorch import EfficientNet
+from dataset.birds_dataset import BirdsDataset, ListLoader
+# from efficientnet_pytorch import EfficientNet
 from utils import augmentations
 # from warmup_scheduler import GradualWarmupScheduler
 
 import apex.amp as amp
 
-cfg = {
-    'nr_images': 3934740,
+config = {
+    'nr_images': 4875459,
     'num_classes': 11000,
     'num_workers': 4,
     'verbose_period': 2000,
@@ -29,7 +32,7 @@ cfg = {
 
 
 def save_ckpt(net, iteration):
-    torch.save(net.state_dict(), cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(iteration) + '.pth')
+    torch.save(net.state_dict(), config['save_folder'] + config['ckpt_name'] + '_' + str(iteration) + '.pth')
 
 
 def evaluate(net, eval_loader):
@@ -63,15 +66,22 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
 
 
 def train(args, train_loader, eval_loader):
-    net = EfficientNet.from_name('efficientnet-b2', override_params={
+    """net = EfficientNet.from_name('efficientnet-b2', override_params={
                                      'image_size': IMAGE_SHAPE[0],
-                                     'num_classes': cfg['num_classes'],
+                                     'num_classes': config['num_classes'],
                                      'dropout_rate': 0.0,
                                      'drop_connect_rate': 0.0,
-                                 }).cuda()
+                                 }).cuda()"""
+    cfg.MODEL.TYPE = "regnet"
+    cfg.REGNET.DEPTH = 20
+    cfg.REGNET.SE_ON = False
+    cfg.REGNET.W0 = 96
+    cfg.MODEL.NUM_CLASSES = config["num_classes"]
+    net = model_builder.build_model()
+    print("net", net)
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
-        ckpt_file = cfg['save_folder'] + cfg['ckpt_name'] + '_' + str(args.resume) + '.pth'
+        ckpt_file = config['save_folder'] + config['ckpt_name'] + '_' + str(args.resume) + '.pth'
         net.load_state_dict(torch.load(ckpt_file))
 
     if args.finetune:
@@ -80,16 +90,19 @@ def train(args, train_loader, eval_loader):
         for param in net.parameters():
             param.requires_grad = False
         # Unfreeze some layers
-        for index in [17, 18, 19, 20, 21, 22]:
-            for param in net._blocks[index].parameters():
-                param.requires_grad = True
-        net._conv_head.weight.requires_grad = True
-        net._fc.weight.requires_grad = True
+        # for index in [17, 18, 19, 20, 21, 22]:
+        #    for param in net._blocks[index].parameters():
+        #        param.requires_grad = True
+        # net._conv_head.weight.requires_grad = True
+        # net._fc.weight.requires_grad = True
+        net.head.fc.weight.requires_grad = True
         optimizer = optim.SGD(filter(lambda param: param.requires_grad, net.parameters()),
                               lr=args.lr, momentum=args.momentum, nesterov=False)
     else:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
-    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2, verbose=True, threshold=1e-2)
+
+    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2,
+                                  verbose=True, threshold=1e-3, threshold_mode='abs')
 
     if args.fp16:
         net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
@@ -101,7 +114,7 @@ def train(args, train_loader, eval_loader):
     batch_iterator = iter(train_loader)
     sum_accuracy = 0
     step = 0
-    for iteration in range(args.resume + 1, args.max_epoch * cfg['nr_images'] // args.batch_size):
+    for iteration in range(args.resume + 1, args.max_epoch * config['nr_images'] // args.batch_size):
         t0 = time.time()
         try:
             images, type_ids = next(batch_iterator)
@@ -114,12 +127,13 @@ def train(args, train_loader, eval_loader):
         images = Variable(images.cuda()).permute(0, 3, 1, 2).float()
         type_ids = Variable(type_ids.cuda())
 
-        one_hot = torch.cuda.FloatTensor(type_ids.shape[0], cfg['num_classes'])
+        one_hot = torch.cuda.FloatTensor(type_ids.shape[0], config['num_classes'])
         one_hot.fill_(4.54587e-5)
         one_hot.scatter_(1, type_ids.unsqueeze(1), 0.5)
 
         # augmentation
-        images = aug(images)
+        if not args.finetune:
+            images = aug(images)
         # forward
         out = net(images)
 
@@ -138,7 +152,7 @@ def train(args, train_loader, eval_loader):
         optimizer.step()
         t1 = time.time()
 
-        if iteration % cfg['verbose_period'] == 0:
+        if iteration % config['verbose_period'] == 0:
             # accuracy
             _, predict = torch.max(out, 1)
             correct = (predict == type_ids)
@@ -148,18 +162,18 @@ def train(args, train_loader, eval_loader):
             sum_accuracy += accuracy
             step += 1
 
-        warmup_steps = cfg['verbose_period'] * 4
+        warmup_steps = config['verbose_period'] * 4
         if iteration < warmup_steps:
             warmup_learning_rate(optimizer, iteration, warmup_steps)
 
-        if iteration % cfg['eval_period'] == 0 and iteration != 0:
+        if iteration % config['eval_period'] == 0 and iteration != 0 and step != 0:
             loss, accuracy = evaluate(net, eval_loader)
-            scheduler.step(accuracy)
             print('Eval accuracy:{} | Train accuracy:{}'.format(accuracy, sum_accuracy/step), flush=True)
+            scheduler.step(accuracy)
             sum_accuracy = 0
             step = 0
 
-        if iteration % cfg['save_period'] == 0 and iteration != 0:
+        if iteration % config['save_period'] == 0 and iteration != 0:
             # save checkpoint
             print('Saving state, iter:', iteration, flush=True)
             save_ckpt(net, iteration)
@@ -184,7 +198,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     t0 = time.time()
-    list_loader = ListLoader(args.dataset_root, cfg['num_classes'], args.finetune)
+    list_loader = ListLoader(args.dataset_root, config['num_classes'], args.finetune)
     list_loader.export_labelmap()
     image_list, train_indices, eval_indices = list_loader.image_indices()
 
@@ -192,10 +206,10 @@ if __name__ == '__main__':
     eval_set = BirdsDataset(image_list, eval_indices, list_loader.multiples(), False)
     print('train set: {} eval set: {}'.format(len(train_set), len(eval_set)))
 
-    train_loader = data.DataLoader(train_set, args.batch_size, num_workers=cfg['num_workers'],
+    train_loader = data.DataLoader(train_set, args.batch_size, num_workers=config['num_workers'],
                                    shuffle=True, pin_memory=True,
                                    collate_fn=BirdsDataset.my_collate)
-    eval_loader = data.DataLoader(eval_set, args.batch_size // 4, num_workers=cfg['num_workers'],
+    eval_loader = data.DataLoader(eval_set, args.batch_size // 4, num_workers=config['num_workers'],
                                   shuffle=False, pin_memory=True,
                                   collate_fn=BirdsDataset.my_collate)
     t1 = time.time()
