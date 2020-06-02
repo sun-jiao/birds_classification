@@ -3,14 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-IMAGE_SHAPE = (200, 200)
+IMAGE_SHAPE = (300, 300)
 
 
 def generate_grid(h, w):
-        x = torch.arange(0, h)
-        y = torch.arange(0, w)
-        grid = torch.stack([x.repeat(w), y.repeat(h,1).t().contiguous().view(-1)],1)
-        return grid
+    x = torch.arange(0, h, dtype=torch.int)
+    y = torch.arange(0, w, dtype=torch.int)
+    grid = torch.stack([x.repeat(w), y.repeat(h, 1).t().contiguous().view(-1)], 1)
+    return grid
 
 
 class Augmentations(nn.Module):
@@ -23,7 +23,7 @@ class Augmentations(nn.Module):
 
     def _image_part(self, split, coordinates, index):
         coord = coordinates[index]
-        part = IMAGE_SHAPE[0]/split
+        part = IMAGE_SHAPE[0] // split
         return coord[0] * part, (coord[0] + 1) * part, coord[1] * part, (coord[1] + 1) * part
 
     def puzzle(self, image):
@@ -58,10 +58,10 @@ class Augmentations(nn.Module):
         image = torch.clamp(image, 0, 255)
 
         # Dropout or Heavy Gaussian Blur
-        #rand = torch.rand(1, device='cuda')
-        #if rand > 0.5:
+        # rand = torch.rand(1, device='cuda')
+        # if rand > 0.5:
         #    image = self.dropout(image)
-        #else:
+        # else:
         #    self.heavy_blur.weight.data.normal_(0.04, 0.02)
         #    image = self.heavy_blur(image)'''
 
