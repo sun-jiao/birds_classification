@@ -70,7 +70,7 @@ class Augmentations(nn.Module):
         image = torch.flip(image, (dim,))
 
         # Rotate -90 ~ 90
-        angle = torch.rand(1, device='cuda') * 180 - 90
+        """angle = torch.rand(1, device='cuda') * 180 - 90
         elastic_scale = torch.rand((4), device='cuda')*0.4 + 0.8  # Also scale the image
         theta = torch.tensor([
                     [math.cos(angle) * elastic_scale[0], math.sin(-angle) * elastic_scale[1], 0],
@@ -93,7 +93,7 @@ class Augmentations(nn.Module):
         y_length = image.size(3) - x_offset
         y_length = y_length.long()
         image = image[:, :, x_offset:x_length, y_offset:y_length]
-        image = F.interpolate(image, orig_size)
+        image = F.interpolate(image, orig_size)"""
 
         # Randomly to gray
         '''rand = torch.rand(1, device='cuda')

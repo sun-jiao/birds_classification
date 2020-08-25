@@ -11,7 +11,7 @@ import pycls.core.model_builder as model_builder
 from pycls.core.config import cfg
 
 from torch.autograd import Variable
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from dataset.birds_dataset import BirdsDataset, ListLoader
 # from efficientnet_pytorch import EfficientNet
 from utils import augmentations
@@ -20,7 +20,6 @@ from utils import augmentations
 import apex.amp as amp
 
 config = {
-    'nr_images': 4875459,
     'num_classes': 11000,
     'num_workers': 4,
     'verbose_period': 2000,
@@ -75,7 +74,7 @@ def train(args, train_loader, eval_loader):
     cfg.MODEL.TYPE = "regnet"
     cfg.REGNET.DEPTH = 20
     cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 96
+    cfg.REGNET.W0 = 128
     cfg.MODEL.NUM_CLASSES = config["num_classes"]
     net = model_builder.build_model()
     print("net", net)
@@ -95,18 +94,23 @@ def train(args, train_loader, eval_loader):
         #        param.requires_grad = True
         # net._conv_head.weight.requires_grad = True
         # net._fc.weight.requires_grad = True
+        for layer in [net.s2.b5]:
+            for param in layer.parameters():
+                param.requies_grad = True
         net.head.fc.weight.requires_grad = True
         optimizer = optim.SGD(filter(lambda param: param.requires_grad, net.parameters()),
                               lr=args.lr, momentum=args.momentum, nesterov=False)
     else:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, nesterov=False)
 
-    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2,
-                                  verbose=True, threshold=1e-3, threshold_mode='abs')
+    if args.finetune:
+        scheduler = CosineAnnealingLR(optimizer, 10)
+    else:
+        scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=2,
+                                      verbose=True, threshold=1e-3, threshold_mode='abs')
 
     if args.fp16:
         net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
-    # scheduler = CosineAnnealingLR(optimizer, 100 * 10000)
     # scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=100, total_epoch=4000,
     #                                          after_scheduler=scheduler)
 
@@ -114,7 +118,7 @@ def train(args, train_loader, eval_loader):
     batch_iterator = iter(train_loader)
     sum_accuracy = 0
     step = 0
-    for iteration in range(args.resume + 1, args.max_epoch * config['nr_images'] // args.batch_size):
+    for iteration in range(args.resume + 1, args.max_epoch * len(train_loader.dataset) // args.batch_size):
         t0 = time.time()
         try:
             images, type_ids = next(batch_iterator)
@@ -140,6 +144,9 @@ def train(args, train_loader, eval_loader):
         # backprop
         optimizer.zero_grad()
         loss = torch.sum(- one_hot * F.log_softmax(out, -1), -1).mean()
+        # loss = torch.sum(- one_hot * F.log_softmax(out, -1), -1)
+        # loss, _ = loss.topk(k=(loss.shape[0] // 4))
+        # loss = loss.mean()
         # loss = F.cross_entropy(out, type_ids)
 
         if args.fp16:
@@ -168,8 +175,12 @@ def train(args, train_loader, eval_loader):
 
         if iteration % config['eval_period'] == 0 and iteration != 0 and step != 0:
             loss, accuracy = evaluate(net, eval_loader)
-            print('Eval accuracy:{} | Train accuracy:{}'.format(accuracy, sum_accuracy/step), flush=True)
-            scheduler.step(accuracy)
+            print(f'Eval accuracy: {accuracy:.4f} | Train accuracy: {sum_accuracy/step:.4f}', flush=True)
+            if args.finetune:
+                scheduler.step()
+            else:
+                scheduler.step(accuracy)
+            print("learning rate:", scheduler.get_lr())
             sum_accuracy = 0
             step = 0
 
