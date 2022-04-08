@@ -21,7 +21,7 @@ import apex.amp as amp
 config = {
     "num_classes": 11000,
     "num_workers": 2,
-    "verbose_period": 2000,
+    "verbose_period": 4000,
     "eval_period": 40000,
     "save_period": 40000,
     "save_folder": "ckpt/",
@@ -31,7 +31,7 @@ config = {
 
 def save_ckpt(net, iteration):
     torch.save(
-        net.state_dict(),
+        net,
         config["save_folder"]
         + config["ckpt_name"]
         + "_"
@@ -72,9 +72,14 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
 
 def train(args, train_loader, eval_loader):
     cfg.MODEL.TYPE = "regnet"
+    # RegNetY-32GF
     cfg.REGNET.DEPTH = 20
     cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 512
+    cfg.REGNET.W0 = 232
+    cfg.REGNET.WA = 115.89
+    cfg.REGNET.WM = 2.53
+    cfg.REGNET.GROUP_W = 232
+    cfg.BN.NUM_GROUPS = 4
     cfg.MODEL.NUM_CLASSES = config["num_classes"]
     net = model_builder.build_model()
     net = net.cuda(device=torch.cuda.current_device())
@@ -88,7 +93,8 @@ def train(args, train_loader, eval_loader):
             + str(args.resume)
             + ".pth"
         )
-        net.load_state_dict(torch.load(ckpt_file))
+        # net.load_state_dict(torch.load(ckpt_file))
+        net = torch.load(ckpt_file)
 
     if args.finetune:
         print("Finetuning......")
@@ -118,9 +124,9 @@ def train(args, train_loader, eval_loader):
         optimizer,
         "max",
         factor=0.5,
-        patience=2,
+        patience=1,
         verbose=True,
-        threshold=1e-3,
+        threshold=5e-3,
         threshold_mode="abs",
     )
 
@@ -159,10 +165,9 @@ def train(args, train_loader, eval_loader):
         # forward
         out = net(images)
 
-        loss = (
-            torch.sum(-one_hot * F.log_softmax(out, -1), -1).mean()
-            / args.iter_size
-        )
+        loss = torch.sum(-one_hot * F.log_softmax(out, -1), -1).mean()
+        # backprop
+        optimizer.zero_grad(set_to_none=True)
 
         if args.fp16:
             with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -171,11 +176,7 @@ def train(args, train_loader, eval_loader):
             loss.backward()
 
         nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
-
-        if iteration != 0 and iteration % args.iter_size == 0:
-            # backprop
-            optimizer.step()
-            optimizer.zero_grad()
+        optimizer.step()
 
         t1 = time.time()
 
@@ -192,7 +193,7 @@ def train(args, train_loader, eval_loader):
             sum_accuracy += accuracy
             step += 1
 
-        warmup_steps = config["verbose_period"] * 8 * args.iter_size
+        warmup_steps = config["verbose_period"] * 8
         if iteration < warmup_steps:
             warmup_learning_rate(optimizer, iteration, warmup_steps)
 
@@ -227,12 +228,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--batch_size", default=32, type=int, help="Batch size for training"
-    )
-    parser.add_argument(
-        "--iter_size",
-        default=2,
-        type=int,
-        help="Number of batches as gradient accumulation",
     )
     parser.add_argument(
         "--max_epoch",
