@@ -72,13 +72,13 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
 
 def train(args, train_loader, eval_loader):
     cfg.MODEL.TYPE = "regnet"
-    # RegNetY-32GF
-    cfg.REGNET.DEPTH = 20
+    # RegNetY-3.2GF
+    cfg.REGNET.DEPTH = 21
     cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 232
-    cfg.REGNET.WA = 115.89
-    cfg.REGNET.WM = 2.53
-    cfg.REGNET.GROUP_W = 232
+    cfg.REGNET.W0 = 80
+    cfg.REGNET.WA = 42.63
+    cfg.REGNET.WM = 2.66
+    cfg.REGNET.GROUP_W = 24
     cfg.BN.NUM_GROUPS = 4
     cfg.MODEL.NUM_CLASSES = config["num_classes"]
     net = model_builder.build_model()
