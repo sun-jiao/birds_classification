@@ -40,9 +40,9 @@ class ListLoader(object):
         self.labelmap = {}
         for directory in os.walk(root_path):
             for dir_name in directory[1]:  # All subdirectories
-                pos = dir_name.find('.')
-                type_id = int(dir_name[0:pos])
-                type_name = dir_name[pos+1:]
+                # Since V5 dataset, we directly use dir_name as id
+                type_id = int(dir_name)
+                type_name = dir_name
                 if type_id < 0 or type_id > num_classes:
                     print('Wrong directory: {}!'.format(dir_name))
                     continue

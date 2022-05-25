@@ -1,6 +1,7 @@
 import time
 import datetime
 import argparse
+import numpy as np
 
 import torch
 import torch.optim as optim
@@ -19,11 +20,8 @@ from utils import augmentations
 import apex.amp as amp
 
 config = {
-    "num_classes": 11000,
+    "num_classes": 11120,
     "num_workers": 2,
-    "verbose_period": 4000,
-    "eval_period": 40000,
-    "save_period": 40000,
     "save_folder": "ckpt/",
     "ckpt_name": "bird_cls",
 }
@@ -68,6 +66,31 @@ def warmup_learning_rate(optimizer, steps, warmup_steps):
     lr = steps * slope + min_lr
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
+
+
+def mixup_data(x, y, alpha=1.0, use_cuda=True):
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+
+    batch_size = x.size()[0]
+    if use_cuda:
+        index = torch.randperm(batch_size).cuda()
+    else:
+        index = torch.randperm(batch_size)
+
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+
+def criterion(outputs, targets):
+    return torch.sum(-targets * F.log_softmax(outputs, -1), -1).mean()
+
+
+def mixup_criterion(pred, y_a, y_b, lam):
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b), lam * y_a + (1 - lam) * y_b
 
 
 def train(args, train_loader, eval_loader):
@@ -137,6 +160,9 @@ def train(args, train_loader, eval_loader):
     batch_iterator = iter(train_loader)
     sum_accuracy = 0
     step = 0
+    config["eval_period"] = len(train_loader.dataset) // args.batch_size // 2
+    config["verbose_period"] = config["eval_period"] // 5
+
     for iteration in range(
         args.resume + 1,
         args.max_epoch * len(train_loader.dataset) // args.batch_size,
@@ -162,21 +188,25 @@ def train(args, train_loader, eval_loader):
         # augmentation
         if not args.finetune:
             images = aug(images)
-        # forward
-        out = net(images)
 
-        loss = torch.sum(-one_hot * F.log_softmax(out, -1), -1).mean()
-        # backprop
-        optimizer.zero_grad(set_to_none=True)
+        for index in range(1):  # Let's mixup two times
+            # 'images' is input and 'one_hot' is target
+            inputs, targets_a, targets_b, lam = mixup_data(images, one_hot)
+            # forward
+            out = net(inputs)
+            loss, out_mixup = mixup_criterion(out, targets_a, targets_b, lam)
 
-        if args.fp16:
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
-        else:
-            loss.backward()
+            # backprop
+            optimizer.zero_grad(set_to_none=True)
 
-        nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
-        optimizer.step()
+            if args.fp16:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
+
+            nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
+            optimizer.step()
 
         t1 = time.time()
 
@@ -212,7 +242,7 @@ def train(args, train_loader, eval_loader):
             sum_accuracy = 0
             step = 0
 
-        if iteration % config["save_period"] == 0 and iteration != 0:
+        if iteration % config["eval_period"] == 0 and iteration != 0:
             # save checkpoint
             print("Saving state, iter:", iteration, flush=True)
             save_ckpt(net, iteration)
@@ -237,7 +267,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dataset_root",
-        default="/media/data2/i18n/V4",
+        default="/media/data2/i18n/V5",
         type=str,
         help="Root path of data",
     )
