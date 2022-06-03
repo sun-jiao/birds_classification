@@ -27,9 +27,13 @@ config = {
 }
 
 
-def save_ckpt(net, iteration):
+def save_ckpt(net, iteration, args):
+    if args.fp16:
+        content = net.state_dict()
+    else:
+        content = net
     torch.save(
-        net,
+        content
         config["save_folder"]
         + config["ckpt_name"]
         + "_"
@@ -38,7 +42,7 @@ def save_ckpt(net, iteration):
     )
 
 
-def evaluate(net, eval_loader):
+def evaluate(net, eval_loader, args):
     total_loss = 0.0
     batch_iterator = iter(eval_loader)
     sum_accuracy = 0
@@ -48,7 +52,10 @@ def evaluate(net, eval_loader):
         type_ids = Variable(type_ids.cuda())
 
         # forward
-        out = net(images.permute(0, 3, 1, 2).float())
+        if args.fp16
+            out = net(images.permute(0, 3, 1, 2).half())
+        else:
+            out = net(images.permute(0, 3, 1, 2).float())
         # accuracy
         _, predict = torch.max(out, 1)
         correct = predict == type_ids
@@ -116,8 +123,10 @@ def train(args, train_loader, eval_loader):
             + str(args.resume)
             + ".pth"
         )
-        # net.load_state_dict(torch.load(ckpt_file))
-        net = torch.load(ckpt_file)
+        if args.fp16:
+            net.load_state_dict(torch.load(ckpt_file))
+        else:
+            net = torch.load(ckpt_file)
 
     if args.finetune:
         print("Finetuning......")
@@ -160,7 +169,7 @@ def train(args, train_loader, eval_loader):
     batch_iterator = iter(train_loader)
     sum_accuracy = 0
     step = 0
-    config["eval_period"] = len(train_loader.dataset) // args.batch_size // 2
+    config["eval_period"] = len(train_loader.dataset) // args.batch_size // 4
     config["verbose_period"] = config["eval_period"] // 5
 
     for iteration in range(
@@ -176,7 +185,11 @@ def train(args, train_loader, eval_loader):
         except Exception as e:
             print("Loading data exception:", e)
 
-        images = Variable(images.cuda()).permute(0, 3, 1, 2).float()
+        images = Variable(images.cuda()).permute(0, 3, 1, 2)
+        if args.fp16:
+            images = images.half()
+        else:
+            images = images.float()
         type_ids = Variable(type_ids.cuda())
 
         one_hot = torch.cuda.FloatTensor(
@@ -190,14 +203,18 @@ def train(args, train_loader, eval_loader):
             images = aug(images)
 
         for index in range(1):  # Let's mixup two times
-            # 'images' is input and 'one_hot' is target
-            inputs, targets_a, targets_b, lam = mixup_data(images, one_hot)
-            # forward
-            out = net(inputs)
-            loss, out_mixup = mixup_criterion(out, targets_a, targets_b, lam)
+            if iteration % config["verbose_period"] == 0:
+                out = net(images)
+                loss = criterion(out, one_hot)
+            else:
+                # 'images' is input and 'one_hot' is target
+                inputs, targets_a, targets_b, lam = mixup_data(images, one_hot)
+                # forward
+                out = net(inputs)
+                loss, out_mixup = mixup_criterion(out, targets_a, targets_b, lam)
 
             # backprop
-            optimizer.zero_grad(set_to_none=True)
+            optimizer.zero_grad()
 
             if args.fp16:
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -232,7 +249,7 @@ def train(args, train_loader, eval_loader):
             and iteration != 0
             and step != 0
         ):
-            loss, accuracy = evaluate(net, eval_loader)
+            loss, accuracy = evaluate(net, eval_loader, args)
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(
                 f"[{now}] Eval accuracy: {accuracy:.4f} | Train accuracy: {sum_accuracy/step:.4f}",
@@ -245,10 +262,10 @@ def train(args, train_loader, eval_loader):
         if iteration % config["eval_period"] == 0 and iteration != 0:
             # save checkpoint
             print("Saving state, iter:", iteration, flush=True)
-            save_ckpt(net, iteration)
+            save_ckpt(net, iteration, args)
 
     # final checkpoint
-    save_ckpt(net, iteration)
+    save_ckpt(net, iteration, args)
 
 
 if __name__ == "__main__":

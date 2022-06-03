@@ -1,1 +1,1 @@
-python3 -u train.py --momentum=0.9 --lr=1.0 --batch_size=46 --resume=936117 --max_epoch=200|tee resume.log
+python3 -u train.py --momentum=0.9 --lr=2.0 --batch_size=112 --resume=265728 --max_epoch=200 --fp16=True|tee resume.log
