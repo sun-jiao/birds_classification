@@ -33,7 +33,7 @@ def save_ckpt(net, iteration, args):
     else:
         content = net
     torch.save(
-        content
+        content,
         config["save_folder"]
         + config["ckpt_name"]
         + "_"
@@ -52,7 +52,7 @@ def evaluate(net, eval_loader, args):
         type_ids = Variable(type_ids.cuda())
 
         # forward
-        if args.fp16
+        if args.fp16:
             out = net(images.permute(0, 3, 1, 2).half())
         else:
             out = net(images.permute(0, 3, 1, 2).float())
@@ -113,7 +113,6 @@ def train(args, train_loader, eval_loader):
     cfg.MODEL.NUM_CLASSES = config["num_classes"]
     net = model_builder.build_model()
     net = net.cuda(device=torch.cuda.current_device())
-    print("net", net)
     if args.resume:
         print("Resuming training, loading {}...".format(args.resume))
         ckpt_file = (
@@ -128,13 +127,15 @@ def train(args, train_loader, eval_loader):
         else:
             net = torch.load(ckpt_file)
 
+    print("net", net)
+
     if args.finetune:
         print("Finetuning......")
         # Freeze all layers
         for param in net.parameters():
             param.requires_grad = False
         # Unfreeze some layers
-        for layer in [net.s1.b18, net.s1.b19, net.s1.b20]:
+        for layer in [net.s3.b12, net.s3.b13, net.s4]:
             for param in layer.parameters():
                 param.requies_grad = True
         net.head.fc.weight.requires_grad = True
