@@ -102,13 +102,13 @@ def mixup_criterion(pred, y_a, y_b, lam):
 
 def train(args, train_loader, eval_loader):
     cfg.MODEL.TYPE = "regnet"
-    # RegNetY-3.2GF
-    cfg.REGNET.DEPTH = 21
+    # RegNetY-6.4GF
+    cfg.REGNET.DEPTH = 25
     cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 80
-    cfg.REGNET.WA = 42.63
-    cfg.REGNET.WM = 2.66
-    cfg.REGNET.GROUP_W = 24
+    cfg.REGNET.W0 = 112
+    cfg.REGNET.WA = 33.22
+    cfg.REGNET.WM = 2.27
+    cfg.REGNET.GROUP_W = 72
     cfg.BN.NUM_GROUPS = 4
     cfg.MODEL.NUM_CLASSES = config["num_classes"]
     net = model_builder.build_model()
@@ -157,7 +157,7 @@ def train(args, train_loader, eval_loader):
         optimizer,
         "max",
         factor=0.5,
-        patience=1,
+        patience=1 if args.finetune else 3,
         verbose=True,
         threshold=5e-3,
         threshold_mode="abs",
