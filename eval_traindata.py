@@ -1,14 +1,16 @@
-import argparse
-import cv2
-import numpy as np
-import os
 import sys
+import cv2
+import time
+import json
 import queue
 import torch
-import time
+import argparse
 import threading
 
-from efficientnet_pytorch import EfficientNet
+import numpy as np
+
+import pycls.core.builders as model_builder
+from pycls.core.config import cfg
 
 BATCH_SIZE = 32
 NR_THREADS = 3
@@ -26,35 +28,37 @@ class FileThread(threading.Thread):
         total = len(self._file_list)
         index = self._start - self._stride
 
-        while (True):
+        while True:
             index += self._stride
             if index >= total:
                 break
             pair = self._file_list[index]
             img = cv2.imread(pair[0])
-            # img = cv2.resize(img, (200, 200))
             if img is None:
                 print("[Error]", pair[0], file=sys.stderr)
                 continue
             if img.shape != (300, 300, 3):
                 print("[Warn]", file=sys.stderr)
                 continue
-            request_queue.put((img, pair[1], pair[0]))  # image_binary, label, image_path
+            # binary_image, label, image_path
+            request_queue.put((img, pair[1], pair[0]))
 
         request_queue.put(("Finish", "Finish"))
 
 
 class EvalThread(threading.Thread):
-    def __init__(self, net, stride):
+    def __init__(self, net, stride, fp):
         threading.Thread.__init__(self)
         self._net = net
         self._stride = stride
         self._statistics = {}
+        self._statistics["correct"] = 0
+        self._statistics["incorrect"] = 0
+        self._fp = fp
 
     def _process(self, img_batch, label_batch, path_batch):
         input = torch.from_numpy(np.asarray(img_batch)).cuda()
         result = self._net(input.permute(0, 3, 1, 2).float())
-        # values, indices = torch.max(result, 1)
         values, indices = torch.topk(result, 10)
 
         for index in range(len(label_batch)):
@@ -71,9 +75,10 @@ class EvalThread(threading.Thread):
             entry["total"] += 1
             if predict[0] == type_id:
                 entry["correct"] += 1
-
-            pred_str = ",".join(str(item) for item in predict.tolist())
-            print("{},{},{}".format(path, type_id, pred_str))
+                self._statistics["correct"] += 1
+            else:
+                self._fp.write(f"({json.dumps(path)}, {type_id})\n")
+                self._statistics["incorrect"] += 1
 
     def run(self):
         finish = 0
@@ -83,7 +88,7 @@ class EvalThread(threading.Thread):
         begin = 0
         verbose_period = 0
 
-        while (True):
+        while True:
             obj = request_queue.get()
             img = obj[0]
             if isinstance(img, str) and img == "Finish":
@@ -103,9 +108,22 @@ class EvalThread(threading.Thread):
                 self._process(img_batch, label_batch, path_batch)
 
                 verbose_period += 1
-                if verbose_period >= 100:
+                if verbose_period >= 1000:
                     duration = time.time() - begin
-                    print("Rate: {}".format(verbose_period*BATCH_SIZE/duration), file=sys.stderr)
+                    print(
+                        "Rate: {}".format(verbose_period * BATCH_SIZE / duration),
+                        file=sys.stderr,
+                    )
+                    print(
+                        "Corret: {}".format(
+                            self._statistics["correct"]
+                            / (
+                                self._statistics["correct"]
+                                + self._statistics["incorrect"]
+                            )
+                        ),
+                        file=sys.stderr,
+                    )
                     verbose_period = 0
                     begin = time.time()
                 img_batch = []
@@ -116,50 +134,41 @@ class EvalThread(threading.Thread):
         with open("total.csv", "w") as fp:
             fp.write("id,total,correct,percent\n")
             for type_id, values in self._statistics.items():
+                if not isinstance(values, dict):
+                    continue
                 total = values["total"]
                 correct = values["correct"]
                 percentage = 100 * (correct / total)
                 fp.write("{},{},{},{}\n".format(type_id, total, correct, percentage))
 
 
-def get_file_list(root_path):
-    file_list = []
+def get_file_list():
+    output = []
 
-    # limit = 0
-    for directory in os.walk(root_path):
-        for dir_name in directory[1]:  # All subdirectories
-            pos = dir_name.find('.')
-            type_id = int(dir_name[0:pos])
+    with open("train.txt", "r") as fp:
+        for line in fp:
+            path, type_id = eval(line)
+            output.append((path, type_id))
 
-            count = 0
-            for image_file in os.listdir(os.path.join(root_path, dir_name)):
-                count += 1
-            if count < 10:
-                continue
-
-            # limit += 1
-            # if limit > 10:
-            #    break
-
-            limit = 0
-            for image_file in os.listdir(os.path.join(root_path, dir_name)):
-                full_path = os.path.join(root_path, dir_name, image_file)
-                file_list.append((full_path, type_id))
-                limit += 1
-                if limit > 100:
-                    break
-
-    return file_list
+    return output
 
 
 def eval_traindata(args):
-    net = EfficientNet.from_name('efficientnet-b2', override_params={
-                                    'image_size': 300,
-                                    'num_classes': 11000})
+    cfg.MODEL.TYPE = "regnet"
+    # RegNetY-6.4GF
+    cfg.REGNET.DEPTH = 25
+    cfg.REGNET.SE_ON = False
+    cfg.REGNET.W0 = 112
+    cfg.REGNET.WA = 33.22
+    cfg.REGNET.WM = 2.27
+    cfg.REGNET.GROUP_W = 72
+    cfg.BN.NUM_GROUPS = 4
+    cfg.MODEL.NUM_CLASSES = 11120
+    net = model_builder.build_model()
     net.load_state_dict(torch.load(args.trained_model))
     net.eval().cuda()
 
-    file_list = get_file_list(args.dataset_root)
+    file_list = get_file_list()
 
     thread_list = []
     for index in range(NR_THREADS):
@@ -167,22 +176,31 @@ def eval_traindata(args):
         thread.start()
         thread_list.append(thread)
 
-    eval_thread = EvalThread(net, NR_THREADS)
-    eval_thread.start()
+    with open("incorrect.txt", "w") as fp:
+        eval_thread = EvalThread(net, NR_THREADS, fp)
+        eval_thread.start()
 
-    eval_thread.join()
-    eval_thread.dump()
+        eval_thread.join()
+        eval_thread.dump()
 
     for thread in thread_list:
         thread.join()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_root', default='/media/data2/i18n/V3',
-                        type=str, help='Root path of data')
-    parser.add_argument('--trained_model', default='ckpt/bird_cls_0.pth',
-                        type=str, help='Trained ckpt file path to open')
+    parser.add_argument(
+        "--dataset_root",
+        default="/media/data2/i18n/V3",
+        type=str,
+        help="Root path of data",
+    )
+    parser.add_argument(
+        "--trained_model",
+        default="ckpt/bird_cls_0.pth",
+        type=str,
+        help="Trained ckpt file path to open",
+    )
     args = parser.parse_args()
 
     eval_traindata(args)
