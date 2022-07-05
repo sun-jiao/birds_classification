@@ -14,6 +14,7 @@ from pycls.core.config import cfg
 
 BATCH_SIZE = 32
 NR_THREADS = 3
+INCORRECT_DATA_FILE = "incorrect.txt"
 request_queue = queue.Queue(maxsize=128)
 
 
@@ -176,7 +177,7 @@ def eval_traindata(args):
         thread.start()
         thread_list.append(thread)
 
-    with open("incorrect.txt", "w") as fp:
+    with open(INCORRECT_DATA_FILE, "w") as fp:
         eval_thread = EvalThread(net, NR_THREADS, fp)
         eval_thread.start()
 

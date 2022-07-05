@@ -1,1 +1,1 @@
-python3 -u eval_traindata.py --trained_model=ckpt/bird_cls_2720000.pth > 10.csv
+python3 -u eval_traindata.py --trained_model=bird_cls_1190110.pth --dataset_root=/home/robin/Downloads/data/V5

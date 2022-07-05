@@ -1,34 +1,15 @@
 import os
 import cv2
-# import time
-import numpy as np
-# import imgaug as ia
-# import imgaug.augmenters as iaa
 
+import numpy as np
 import torch.utils.data as data
+
 from collections import Counter
 
 IMAGE_SHAPE = (300, 300)
-
 SEED = 20190519
 EVAL_RATIO = 0.05
-
-'''ia.seed(int(time.time()))
-
-seq = iaa.Sequential([
-    iaa.OneOf([
-        iaa.ElasticTransformation(sigma=0.25, alpha=(0.01, 0.6)),
-        iaa.PerspectiveTransform(scale=(0.01, 0.10)),
-        iaa.PiecewiseAffine(scale=(0.01, 0.03)),
-    ]),
-])'''
-'''iaa.OneOf([
-    iaa.GammaContrast(gamma=(0.8, 1.2)),
-    iaa.SigmoidContrast(cutoff=(0.4, 0.6), gain=(5, 10)),
-    iaa.Multiply((0.8, 1.2)),
-    iaa.Add((-20, 20)),
- ]),
-])'''
+INCORRECT_DATA_FILE = "incorrect.txt"
 
 
 class ListLoader(object):
@@ -44,7 +25,7 @@ class ListLoader(object):
                 type_id = int(dir_name)
                 type_name = dir_name
                 if type_id < 0 or type_id > num_classes:
-                    print('Wrong directory: {}!'.format(dir_name))
+                    print("Wrong directory: {}!".format(dir_name))
                     continue
                 self.labelmap[type_id] = type_name
                 for image_file in os.listdir(os.path.join(root_path, dir_name)):
@@ -58,11 +39,11 @@ class ListLoader(object):
                     self.image_list.append((full_path, type_id))
 
         avg_count = sum(self.category_count.values()) / len(self.category_count)
-        print('Avg count per category:', avg_count)
+        print("Avg count per category:", avg_count)
         minimum = min(self.category_count, key=self.category_count.get)
-        print('Min count category:', self.category_count[minimum])
+        print("Min count category:", self.category_count[minimum])
         maximum = max(self.category_count, key=self.category_count.get)
-        print('Max count category:', self.category_count[maximum])
+        print("Max count category:", self.category_count[maximum])
 
         self.category_multiple = {}
         small_cat = 0
@@ -71,10 +52,10 @@ class ListLoader(object):
             if multiple > 1:
                 small_cat += 1
             self.category_multiple[type_id] = multiple
-        print('Small categories:', small_cat)
+        print("Small categories:", small_cat)
 
     def image_indices(self):
-        '''Return train/eval image files' list'''
+        """Return train/eval image files' list"""
         length = len(self.image_list)
         indices = np.random.permutation(length)
         point = int(length * EVAL_RATIO)
@@ -97,23 +78,52 @@ class ListLoader(object):
     def multiples(self):
         return self.category_multiple
 
-    def export_labelmap(self, path='labelmap.csv'):
-        with open(path, 'w') as fp:
+    def export_labelmap(self, path="labelmap.csv"):
+        with open(path, "w") as fp:
             for type_id, type_name in self.labelmap.items():
                 count = self.category_count[type_id]
-                fp.write(str(type_id) + ',' + type_name + ',' + str(count) + '\n')
+                fp.write(str(type_id) + "," + type_name + "," + str(count) + "\n")
 
 
 class BirdsDataset(data.Dataset):
-    """ All images and classes for birds through the world """
-    def __init__(self, image_list, image_indices, category_multiple, is_training):
+    """All images and classes for birds through the world"""
+
+    def __init__(
+        self,
+        image_list,
+        image_indices,
+        category_multiple,
+        is_training,
+        load_incorrect=False,
+    ):
         self.image_list = image_list
         self.image_indices = image_indices
         self.category_multiple = category_multiple
         self.is_training = is_training
+        self._base_len = len(self.image_indices)
+        if load_incorrect:
+            # Load incorrect samples as additional list (weight + 2)
+            addition_list = []
+            with open(INCORRECT_DATA_FILE, "r") as fp:
+                for line in fp:
+                    path, type_id = eval(line)
+                    for _ in range(2):
+                        addition_list.append((path, type_id))
+            np.random.shuffle(addition_list)
+            self._addition_list = addition_list
+
+        if load_incorrect:
+            self._addition_len = len(addition_list)
+        else:
+            self._addition_len = 0
 
     def __getitem__(self, index):
-        image_path, type_id = self.image_list[self.image_indices[index]]
+        if index >= self._base_len:
+            pair = self._addition_list[index - self._base_len]
+            image_path, type_id = pair
+        else:
+            image_path, type_id = self.image_list[self.image_indices[index]]
+
         image = cv2.imread(image_path)
         if image is None:
             print("[Error] {} can't be read".format(image_path))
@@ -123,18 +133,11 @@ class BirdsDataset(data.Dataset):
             print("[Warn] {} has shape {}".format(image_path, image.shape))
             return None
         if isinstance(type_id, str):
-            print('What:', type_id)
-        '''if self.is_training:
-            multiple = self.category_multiple[type_id]
-            # Only augment small categories
-            if multiple > 1 and not np.random.randint(10):
-                image = seq.augment_image(image)
-                # imgaug may fracture numpy array
-                image = np.ascontiguousarray(image)'''
+            print("What:", type_id)
         return image, int(type_id)
 
     def __len__(self):
-        return len(self.image_indices)
+        return self._base_len + self._addition_len
 
     @staticmethod
     def my_collate(batch):
@@ -142,13 +145,17 @@ class BirdsDataset(data.Dataset):
         return data.dataloader.default_collate(list(batch))
 
 
-if __name__ == '__main__':
-    list_loader = ListLoader('/media/data2/i18n/V1', 11000)
+if __name__ == "__main__":
+    list_loader = ListLoader("/home/robin/Downloads/data/V5", 11120, False)
     img_list, train_lst, eval_lst = list_loader.image_indices()
-    print('train_lst', train_lst, len(train_lst))
-    print('eval_lst', eval_lst, len(eval_lst))
+    with open("train.txt", "w") as fp:
+        for ind in train_lst:
+            fp.write(str(img_list[ind]) + "\n")
+    with open("eval.txt", "w") as fp:
+        for ind in eval_lst:
+            fp.write(str(img_list[ind]) + "\n")
 
     bd = BirdsDataset(img_list, eval_lst, list_loader.multiples(), False)
     image, type_id = bd[1023]
-    print('image', image)
-    print('type_id', type_id, type(type_id))
+    print("image", image)
+    print("type_id", type_id, type(type_id))
