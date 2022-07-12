@@ -12,7 +12,7 @@ import numpy as np
 import pycls.core.builders as model_builder
 from pycls.core.config import cfg
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 NR_THREADS = 3
 INCORRECT_DATA_FILE = "incorrect.txt"
 request_queue = queue.Queue(maxsize=128)
@@ -156,13 +156,13 @@ def get_file_list():
 
 def eval_traindata(args):
     cfg.MODEL.TYPE = "regnet"
-    # RegNetY-6.4GF
-    cfg.REGNET.DEPTH = 25
+    # RegNetY-8.0GF
+    cfg.REGNET.DEPTH = 17
     cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 112
-    cfg.REGNET.WA = 33.22
-    cfg.REGNET.WM = 2.27
-    cfg.REGNET.GROUP_W = 72
+    cfg.REGNET.W0 = 192
+    cfg.REGNET.WA = 76.82
+    cfg.REGNET.WM = 2.19
+    cfg.REGNET.GROUP_W = 56
     cfg.BN.NUM_GROUPS = 4
     cfg.MODEL.NUM_CLASSES = 11120
     net = model_builder.build_model()

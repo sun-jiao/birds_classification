@@ -146,7 +146,7 @@ class BirdsDataset(data.Dataset):
 
 
 if __name__ == "__main__":
-    list_loader = ListLoader("/home/robin/Downloads/data/V5", 11120, False)
+    list_loader = ListLoader("/media/data2/i18n/V5", 11120, True)
     img_list, train_lst, eval_lst = list_loader.image_indices()
     with open("train.txt", "w") as fp:
         for ind in train_lst:

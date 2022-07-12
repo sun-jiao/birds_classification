@@ -1,3 +1,4 @@
+import sys
 import time
 import datetime
 import argparse
@@ -102,13 +103,13 @@ def mixup_criterion(pred, y_a, y_b, lam):
 
 def train(args, train_loader, eval_loader):
     cfg.MODEL.TYPE = "regnet"
-    # RegNetY-6.4GF
-    cfg.REGNET.DEPTH = 25
+    # RegNetY-8.0GF
+    cfg.REGNET.DEPTH = 17
     cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 112
-    cfg.REGNET.WA = 33.22
-    cfg.REGNET.WM = 2.27
-    cfg.REGNET.GROUP_W = 72
+    cfg.REGNET.W0 = 192
+    cfg.REGNET.WA = 76.82
+    cfg.REGNET.WM = 2.19
+    cfg.REGNET.GROUP_W = 56
     cfg.BN.NUM_GROUPS = 4
     cfg.MODEL.NUM_CLASSES = config["num_classes"]
     net = model_builder.build_model()
@@ -135,7 +136,7 @@ def train(args, train_loader, eval_loader):
         for param in net.parameters():
             param.requires_grad = False
         # Unfreeze some layers
-        for layer in [net.s3.b12, net.s3.b13, net.s4]:
+        for layer in [net.s3, net.s4]:
             for param in layer.parameters():
                 param.requies_grad = True
         net.head.fc.weight.requires_grad = True
@@ -157,7 +158,7 @@ def train(args, train_loader, eval_loader):
         optimizer,
         "max",
         factor=0.5,
-        patience=1 if args.finetune else 3,
+        patience=3,
         verbose=True,
         threshold=5e-3,
         threshold_mode="abs",
@@ -173,10 +174,7 @@ def train(args, train_loader, eval_loader):
     config["eval_period"] = len(train_loader.dataset) // args.batch_size // 4
     config["verbose_period"] = config["eval_period"] // 5
 
-    for iteration in range(
-        args.resume + 1,
-        args.max_epoch * len(train_loader.dataset) // args.batch_size,
-    ):
+    for iteration in range(args.resume + 1, sys.maxsize):
         t0 = time.time()
         try:
             images, type_ids = next(batch_iterator)
@@ -278,12 +276,6 @@ if __name__ == "__main__":
         "--batch_size", default=32, type=int, help="Batch size for training"
     )
     parser.add_argument(
-        "--max_epoch",
-        default=100,
-        type=int,
-        help="Maximum epoches for training",
-    )
-    parser.add_argument(
         "--dataset_root",
         default="/media/data2/i18n/V5",
         type=str,
@@ -316,6 +308,12 @@ if __name__ == "__main__":
         type=bool,
         help="Use float16 precision to train",
     )
+    parser.add_argument(
+        "--load_incorrect",
+        default=False,
+        type=bool,
+        help="Add weights of incorrect samples for training",
+    )
     args = parser.parse_args()
 
     t0 = time.time()
@@ -326,7 +324,7 @@ if __name__ == "__main__":
     image_list, train_indices, eval_indices = list_loader.image_indices()
 
     train_set = BirdsDataset(
-        image_list, train_indices, list_loader.multiples(), True
+        image_list, train_indices, list_loader.multiples(), True, load_incorrect=args.load_incorrect
     )
     eval_set = BirdsDataset(
         image_list, eval_indices, list_loader.multiples(), False

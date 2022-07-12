@@ -1,1 +1,1 @@
-python3 -u eval_traindata.py --trained_model=bird_cls_1190110.pth --dataset_root=/home/robin/Downloads/data/V5
+python3 -u eval_traindata.py --trained_model=ckpt/bird_cls_2487440.pth --dataset_root=/media/data2/i18n/V5
