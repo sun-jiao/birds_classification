@@ -16,10 +16,11 @@ from pycls.core.config import cfg
 
 def pressure_predict(net, tensor_img):
     t0 = time.time()
-    for _ in range(10):
-        result = net(tensor_img)
-        result = softmax(result)
-        values, indices = torch.topk(result, 10)
+    with torch.no_grad():
+        for _ in range(100):
+            result = net(tensor_img)
+            result = softmax(result)
+            values, indices = torch.topk(result, 10)
     t1 = time.time()
     print("time:", t1 - t0)
     print(values)
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     net = model_builder.build_model()
     net.load_state_dict(torch.load("bird_cls_2754696.pth", map_location="cpu"))
     net.eval()
-    model = net
+    net = net.float()
     softmax = nn.Softmax(dim=1).eval()
 
     # read image
@@ -46,6 +47,15 @@ if __name__ == "__main__":
     img = cv2.resize(img, (300, 300))
     tensor_img = torch.from_numpy(img).unsqueeze(0).permute(0, 3, 1, 2).float()
     pressure_predict(net, tensor_img)
+
+    # quantization
+    model_int8 = torch.quantization.quantize_dynamic(
+            net,
+            {torch.nn.Linear, torch.nn.Conv2d, torch.nn.GroupNorm},
+            dtype=torch.qint8)
+    torch.save(model_int8, "int8.pth")
+    pressure_predict(model_int8, tensor_img)
+
 
     dummy_input = torch.randn(1, 3, 300, 300)
     with torch.jit.optimized_execution(True):
