@@ -28,11 +28,12 @@ config = {
 }
 
 
-def save_ckpt(net, iteration, args):
+def save_ckpt(net, iteration, args, cfg):
     if args.fp16:
         content = net.state_dict()
     else:
         content = net
+    content["_config"] = cfg
     torch.save(
         content,
         config["save_folder"]
@@ -49,7 +50,7 @@ def evaluate(net, eval_loader, args):
     sum_accuracy = 0
     for iteration in range(len(eval_loader)):
         images, type_ids = next(batch_iterator)
-        images = Variable(images.cuda())
+        images = Variable(images.cuda()) / 255.0
         type_ids = Variable(type_ids.cuda())
 
         # forward
@@ -102,18 +103,6 @@ def mixup_criterion(pred, y_a, y_b, lam):
 
 
 def train(args, train_loader, eval_loader):
-    cfg.MODEL.TYPE = "regnet"
-    # RegNetY-8.0GF
-    cfg.REGNET.DEPTH = 17
-    cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 192
-    cfg.REGNET.WA = 76.82
-    cfg.REGNET.WM = 2.19
-    cfg.REGNET.GROUP_W = 56
-    cfg.BN.NUM_GROUPS = 4
-    cfg.MODEL.NUM_CLASSES = config["num_classes"]
-    net = model_builder.build_model()
-    net = net.cuda(device=torch.cuda.current_device())
     if args.resume:
         print("Resuming training, loading {}...".format(args.resume))
         ckpt_file = (
@@ -124,10 +113,27 @@ def train(args, train_loader, eval_loader):
             + ".pth"
         )
         if args.fp16:
-            net.load_state_dict(torch.load(ckpt_file))
+            state_net = torch.load(ckpt_file)
+            cfg.merge_from_other_cfg(state_net["_config"])
+            del state_net["_config"]
+            net = model_builder.build_model()
+            net.load_state_dict(state_net)
         else:
             net = torch.load(ckpt_file)
+    else:
+        cfg.MODEL.TYPE = "regnet"
+        # RegNetY-8.0GF
+        cfg.REGNET.DEPTH = 17
+        cfg.REGNET.SE_ON = False
+        cfg.REGNET.W0 = 192
+        cfg.REGNET.WA = 76.82
+        cfg.REGNET.WM = 2.19
+        cfg.REGNET.GROUP_W = 56
+        cfg.BN.NUM_GROUPS = 4
+        cfg.MODEL.NUM_CLASSES = config["num_classes"]
+        net = model_builder.build_model()
 
+    net = net.cuda(device=torch.cuda.current_device())
     print("net", net)
 
     if args.finetune:
@@ -165,7 +171,10 @@ def train(args, train_loader, eval_loader):
     )
 
     if args.fp16:
-        net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
+        if args.finetune:
+            net, optimizer = amp.initialize(net, optimizer, opt_level="O0")
+        else:
+            net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
 
     aug = augmentations.Augmentations().cuda()
     batch_iterator = iter(train_loader)
@@ -198,8 +207,8 @@ def train(args, train_loader, eval_loader):
         one_hot.scatter_(1, type_ids.unsqueeze(1), 0.5)
 
         # augmentation
-        if not args.finetune:
-            images = aug(images)
+        images = aug(images)
+        images = images / 255.0
 
         for index in range(1):  # Let's mixup two times
             if iteration % config["verbose_period"] == 0:
@@ -248,7 +257,8 @@ def train(args, train_loader, eval_loader):
             and iteration != 0
             and step != 0
         ):
-            loss, accuracy = evaluate(net, eval_loader, args)
+            with torch.no_grad():
+                loss, accuracy = evaluate(net, eval_loader, args)
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(
                 f"[{now}] Eval accuracy: {accuracy:.4f} | Train accuracy: {sum_accuracy/step:.4f}",
@@ -261,10 +271,10 @@ def train(args, train_loader, eval_loader):
         if iteration % config["eval_period"] == 0 and iteration != 0:
             # save checkpoint
             print("Saving state, iter:", iteration, flush=True)
-            save_ckpt(net, iteration, args)
+            save_ckpt(net, iteration, args, cfg)
 
     # final checkpoint
-    save_ckpt(net, iteration, args)
+    save_ckpt(net, iteration, args, cfg)
 
 
 if __name__ == "__main__":
@@ -277,7 +287,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dataset_root",
-        default="/media/data2/i18n/V5",
+        default="/media/data2/i18n/V5.1.20220722",
         type=str,
         help="Root path of data",
     )
