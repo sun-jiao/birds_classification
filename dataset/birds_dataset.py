@@ -106,6 +106,8 @@ class BirdsDataset(data.Dataset):
             addition_list = []
             with open(INCORRECT_DATA_FILE, "r") as fp:
                 for line in fp:
+                    pos = line.index(",", line.index(",") + 1)
+                    line = line[:pos] + ")"
                     path, type_id = eval(line)
                     for _ in range(2):
                         addition_list.append((path, type_id))

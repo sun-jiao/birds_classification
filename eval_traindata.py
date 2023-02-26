@@ -86,7 +86,7 @@ class EvalThread(threading.Thread):
                 self._statistics["correct"] += 1
                 self._statistics["correct_top1_value"] += top10[0].item()
             else:
-                self._fp.write(f"({json.dumps(path)}, {type_id})\n")
+                self._fp.write(f"({json.dumps(path)}, {type_id}, {predict[:5]})\n")
                 self._statistics["incorrect"] += 1
                 self._statistics["incorrect_top1_value"] += top10[0].item()
 

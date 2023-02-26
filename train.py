@@ -29,10 +29,7 @@ config = {
 
 
 def save_ckpt(net, iteration, args, cfg):
-    if args.fp16:
-        content = net.state_dict()
-    else:
-        content = net
+    content = net.state_dict()
     content["_config"] = cfg
     torch.save(
         content,
@@ -112,14 +109,11 @@ def train(args, train_loader, eval_loader):
             + str(args.resume)
             + ".pth"
         )
-        if args.fp16:
-            state_net = torch.load(ckpt_file)
-            cfg.merge_from_other_cfg(state_net["_config"])
-            del state_net["_config"]
-            net = model_builder.build_model()
-            net.load_state_dict(state_net)
-        else:
-            net = torch.load(ckpt_file)
+        state_net = torch.load(ckpt_file)
+        cfg.merge_from_other_cfg(state_net["_config"])
+        del state_net["_config"]
+        net = model_builder.build_model()
+        net.load_state_dict(state_net)
     else:
         cfg.MODEL.TYPE = "regnet"
         # RegNetY-8.0GF
@@ -170,11 +164,7 @@ def train(args, train_loader, eval_loader):
         threshold_mode="abs",
     )
 
-    if args.fp16:
-        if args.finetune:
-            net, optimizer = amp.initialize(net, optimizer, opt_level="O0")
-        else:
-            net, optimizer = amp.initialize(net, optimizer, opt_level="O2")
+    net, optimizer = amp.initialize(net, optimizer, opt_level="O2" if args.fp16 else "O0")
 
     aug = augmentations.Augmentations().cuda()
     batch_iterator = iter(train_loader)
