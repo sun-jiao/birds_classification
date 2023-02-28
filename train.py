@@ -147,11 +147,10 @@ def train(args, train_loader, eval_loader):
             nesterov=False,
         )
     else:
-        optimizer = optim.SGD(
+        optimizer = optim.AdamW(
             net.parameters(),
             lr=args.lr,
-            momentum=args.momentum,
-            nesterov=False,
+            weight_decay=0.05,
         )
 
     scheduler = ReduceLROnPlateau(
