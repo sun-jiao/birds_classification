@@ -17,6 +17,7 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset.birds_dataset import BirdsDataset, ListLoader
 from utils import augmentations
+from sam import SAM
 
 import apex.amp as amp
 
@@ -140,17 +141,19 @@ def train(args, train_loader, eval_loader):
             for param in layer.parameters():
                 param.requies_grad = True
         net.head.fc.weight.requires_grad = True
-        optimizer = optim.SGD(
+        base_optimizer = optim.SGD
+        optimizer = SAM(
             filter(lambda param: param.requires_grad, net.parameters()),
+            base_optimizer,
             lr=args.lr,
             momentum=args.momentum,
             nesterov=False,
         )
+
     else:
         optimizer = optim.AdamW(
             net.parameters(),
             lr=args.lr,
-            weight_decay=0.05,
         )
 
     scheduler = ReduceLROnPlateau(
@@ -211,7 +214,21 @@ def train(args, train_loader, eval_loader):
                 loss, out_mixup = mixup_criterion(out, targets_a, targets_b, lam)
 
             # backprop
-            optimizer.zero_grad()
+            if args.fp16:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
+
+            nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
+            optimizer.first_step(zero_grad=True)
+
+            if iteration % config["verbose_period"] == 0:
+                out = net(images)
+                loss = criterion(out, one_hot)
+            else:
+                out = net(inputs)
+                loss, out_mixup = mixup_criterion(out, targets_a, targets_b, lam)
 
             if args.fp16:
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -220,7 +237,8 @@ def train(args, train_loader, eval_loader):
                 loss.backward()
 
             nn.utils.clip_grad_norm_(net.parameters(), max_norm=20, norm_type=2)
-            optimizer.step()
+            optimizer.second_step(zero_grad=True)
+
 
         t1 = time.time()
 
