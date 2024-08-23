@@ -1,4 +1,6 @@
 import sys
+from collections import OrderedDict
+
 import cv2
 import time
 import json
@@ -12,7 +14,10 @@ import numpy as np
 import torch.nn as nn
 
 import pycls.core.builders as model_builder
+import torchvision
 from pycls.core.config import cfg
+from torch import softmax
+
 
 def pressure_predict(net, tensor_img):
     t0 = time.time()
@@ -25,22 +30,23 @@ def pressure_predict(net, tensor_img):
     print("time:", t1 - t0)
     print(values)
 
+
 if __name__ == "__main__":
-    cfg.MODEL.TYPE = "regnet"
-    # RegNetY-8.0GF
-    cfg.REGNET.DEPTH = 17
-    cfg.REGNET.SE_ON = False
-    cfg.REGNET.W0 = 192
-    cfg.REGNET.WA = 76.82
-    cfg.REGNET.WM = 2.19
-    cfg.REGNET.GROUP_W = 56
-    cfg.BN.NUM_GROUPS = 4
-    cfg.MODEL.NUM_CLASSES = 11120
-    net = model_builder.build_model()
-    net.load_state_dict(torch.load("bird_cls_2754696.pth", map_location="cpu"))
-    net.eval()
-    net = net.float()
-    softmax = nn.Softmax(dim=1).eval()
+    net = torchvision.models.resnet34(pretrained=False)
+    net.fc = nn.Linear(net.fc.in_features, 10320)
+
+    # Load the state dict
+    state_dict = torch.load('/home/sunjiao/Downloads/LBird-31_checkpoint.pth.tar', map_location=torch.device('cpu'))[
+        'state_dict']
+
+    # Create a new state dict with keys modified
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k.replace("module.", "")  # remove `module.`
+        new_state_dict[name] = v
+
+    # Load the new state dict
+    net.load_state_dict(new_state_dict)
 
     # read image
     img = cv2.imread("blujay.jpg")
@@ -50,12 +56,11 @@ if __name__ == "__main__":
 
     # quantization
     model_int8 = torch.quantization.quantize_dynamic(
-            net,
-            {torch.nn.Linear, torch.nn.Conv2d, torch.nn.GroupNorm},
-            dtype=torch.qint8)
+        net,
+        {torch.nn.Linear, torch.nn.Conv2d, torch.nn.GroupNorm},
+        dtype=torch.qint8)
     torch.save(model_int8, "int8.pth")
     pressure_predict(model_int8, tensor_img)
-
 
     dummy_input = torch.randn(1, 3, 300, 300)
     with torch.jit.optimized_execution(True):
@@ -65,6 +70,7 @@ if __name__ == "__main__":
     pressure_predict(net, tensor_img)
 
     import intel_extension_for_pytorch as ipex
+
     net = net.to(memory_format=torch.channels_last)
     net = ipex.optimize(net)
     tensor_img = tensor_img.to(memory_format=torch.channels_last)
